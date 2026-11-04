@@ -42,9 +42,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
   const filters = parseFilters(sp);
   const grain = grainFor(filters);
   const supabase = await createClient();
-  const settings = await getSettings(supabase);
-
-  const [lookups, overview, trend, ratings, reasons, rr, branches, employees, recent] = await Promise.all([
+  // Everything below runs in parallel – one round trip to the database.
+  const settingsP = getSettings(supabase);
+  const [settings, lookups, overview, trend, ratings, reasons, rr, branches, employees, recent] = await Promise.all([
+    settingsP,
     getLookups(supabase, { profile }),
     getOverview(supabase, filters),
     getTrend(supabase, filters, grain),
@@ -52,7 +53,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/admin"
     getNonPurchaseReasons(supabase, filters),
     getResponseRateTrend(supabase, filters),
     getBranchPerformance(supabase, filters),
-    getEmployeePerformance(supabase, filters, settings.min_employee_sample),
+    settingsP.then((s) => getEmployeePerformance(supabase, filters, s.min_employee_sample)),
     getRecentComments(supabase, filters, null, 5),
   ]);
 
