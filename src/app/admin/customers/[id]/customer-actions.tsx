@@ -12,6 +12,7 @@ import type { Branch, Employee } from "@/lib/types";
 import { setOptOutAction, updateContactAction } from "../actions";
 import { resendInvitationAction, sendInvitationsAction } from "../../messaging/actions";
 import { AddInteractionForm } from "../customer-form";
+import { TestSurveyLinkDialog } from "@/components/admin/test-survey-link";
 
 export function EditContactDialog({ customerId, initial }: { customerId: string; initial: { full_name: string; mobile: string; email: string } }) {
   const [open, setOpen] = useState(false);
@@ -87,8 +88,10 @@ export function OptOutToggle({ customerId, optedOut }: { customerId: string; opt
 
 export function SendSurveyButton({ interactionId, surveyType, disabled }: { interactionId: string; surveyType: "purchased" | "non_purchased"; disabled?: boolean }) {
   const [pending, start] = useTransition();
+  const [testLink, setTestLink] = useState<string | null>(null);
   const router = useRouter();
   return (
+    <>
     <Button
       size="sm"
       disabled={disabled || pending}
@@ -98,21 +101,27 @@ export function SendSurveyButton({ interactionId, surveyType, disabled }: { inte
           const res = await sendInvitationsAction({ interactionIds: [interactionId], surveyType });
           if (!res.ok) return void toast.error(res.error);
           const o = res.data.outcomes[0];
-          if (o?.status === "sent") toast.success(res.data.isTest ? "Test message logged (not sent – SMS test mode)" : "Survey SMS sent");
-          else toast.error(o?.reason ?? "Message was not sent");
+          if (o?.status === "sent") {
+            toast.success(res.data.isTest ? "Test message logged (not sent – SMS test mode)" : "Survey SMS sent");
+            if (o.testLink) setTestLink(o.testLink);
+          } else toast.error(o?.reason ?? "Message was not sent");
           router.refresh();
         })
       }
     >
       {pending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Send data-icon="inline-start" />} Send survey
     </Button>
+    <TestSurveyLinkDialog url={testLink} onClose={() => setTestLink(null)} />
+    </>
   );
 }
 
 export function ResendButton({ invitationId, failed }: { invitationId: string; failed: boolean }) {
   const [pending, start] = useTransition();
+  const [testLink, setTestLink] = useState<string | null>(null);
   const router = useRouter();
   return (
+    <>
     <Button
       size="sm"
       variant="outline"
@@ -123,12 +132,15 @@ export function ResendButton({ invitationId, failed }: { invitationId: string; f
           const res = await resendInvitationAction(invitationId, failed);
           if (!res.ok) return void toast.error(res.error);
           toast.success(res.data.isTest ? "Test message logged (not sent – SMS test mode)" : "Survey SMS sent");
+          if (res.data.testLink) setTestLink(res.data.testLink);
           router.refresh();
         })
       }
     >
       {pending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <RotateCw data-icon="inline-start" />} {failed ? "Retry" : "Resend"}
     </Button>
+    <TestSurveyLinkDialog url={testLink} onClose={() => setTestLink(null)} />
+    </>
   );
 }
 

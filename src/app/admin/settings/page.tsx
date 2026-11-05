@@ -56,14 +56,17 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
       {tab === "branches" && (
         <Panel title="Branches" actions={<BranchDialog />} bodyClassName="px-0 pb-0">
           <Table>
-            <TableHeader><TableRow className="bg-muted/50"><TableHead className="pl-5">Name</TableHead><TableHead>Code</TableHead><TableHead>City</TableHead><TableHead>Phone</TableHead><TableHead>Status</TableHead><TableHead className="pr-5" /></TableRow></TableHeader>
+            <TableHeader><TableRow className="bg-muted/50"><TableHead className="pl-5">Name</TableHead><TableHead>Code</TableHead><TableHead>Brand shown</TableHead><TableHead>SMS mask</TableHead><TableHead>Status</TableHead><TableHead className="pr-5" /></TableRow></TableHeader>
             <TableBody>
               {lookups.branches.map((b) => (
                 <TableRow key={b.id}>
                   <TableCell className="pl-5 font-medium">{b.name}</TableCell>
                   <TableCell className="tabular">{b.code}</TableCell>
-                  <TableCell>{b.city ?? "—"}</TableCell>
-                  <TableCell>{b.phone ?? "—"}</TableCell>
+                  <TableCell>
+                    {b.brand_name ?? <span className="text-muted-foreground">{settings.company_display_name}</span>}
+                    <a href={`/survey/preview/purchased?branch=${encodeURIComponent(b.code)}`} target="_blank" rel="noopener noreferrer" className="block text-xs text-series-1 hover:underline">Preview survey</a>
+                  </TableCell>
+                  <TableCell>{b.sms_sender_id ? <span className="font-mono text-xs">{b.sms_sender_id}</span> : <span className="text-muted-foreground">Default mask</span>}</TableCell>
                   <TableCell>{b.is_active ? "Active" : <span className="text-muted-foreground">Inactive</span>}</TableCell>
                   <TableCell className="pr-5 text-right"><BranchDialog branch={b} /></TableCell>
                 </TableRow>
@@ -96,28 +99,28 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
       )}
 
       {tab === "integrations" && (
-        <Panel title="Reachout.lk SMS" description="Credentials are server-side environment variables and are never shown or editable here.">
+        <Panel title="SMS provider – Dialog eSMS" description="Credentials are server-side environment variables and are never shown or editable here.">
           {envError ? (
             <p className="text-sm text-destructive">{envError}</p>
           ) : sms ? (
             <div className="space-y-4 text-sm">
               <dl className="grid grid-cols-[auto_1fr] gap-x-6 gap-y-2">
                 <dt className="text-muted-foreground">Active provider</dt>
-                <dd className="font-medium">{sms.isTest ? "Mock (test mode – messages are logged, not sent)" : sms.name}</dd>
+                <dd className="font-medium">{sms.isTest ? "Test mode (messages are logged, not sent)" : sms.label}</dd>
                 <dt className="text-muted-foreground">Ready to send</dt>
                 <dd className="flex items-center gap-1.5">{sms.ready ? <><CheckCircle2 className="size-4 text-promoter" /> Yes</> : <><XCircle className="size-4 text-destructive" /> No</>}</dd>
                 <dt className="text-muted-foreground">Delivery reports</dt>
-                <dd>{sms.supportsDeliveryReports ? "Supported – webhook /api/webhooks/sms" : "Not available – status stays “Accepted by provider”"}</dd>
+                <dd>{sms.supportsDeliveryReports ? "Supported – webhook /api/webhooks/sms" : "Off – set SMS_WEBHOOK_SECRET to receive Delivered / Failed updates"}</dd>
               </dl>
               {sms.problems.length > 0 && (
                 <ul className="list-disc space-y-1 rounded-lg bg-destructive/5 p-3 pl-8 text-destructive">{sms.problems.map((p) => <li key={p}>{p}</li>)}</ul>
               )}
               <div className="rounded-lg bg-muted/60 p-3 text-muted-foreground">
-                <p className="font-medium text-foreground">To go live with Reachout.lk</p>
+                <p className="font-medium text-foreground">To send real SMS with Dialog eSMS</p>
                 <ol className="mt-1 list-decimal space-y-1 pl-5">
-                  <li>Obtain the official API documentation and an approved sender ID (SMS mask) from Reachout.lk / Hutch.</li>
-                  <li>Complete the request mapping in <code>src/lib/messaging/reachout.ts</code> and set <code>REACHOUT_SPEC.verified = true</code>.</li>
-                  <li>Set <code>SMS_PROVIDER=reachout</code>, <code>REACHOUT_API_BASE_URL</code>, <code>REACHOUT_API_KEY</code> and <code>REACHOUT_SENDER_ID</code> in Vercel, then redeploy.</li>
+                  <li>In Vercel set <code>DIALOG_ESMS_USERNAME</code>, <code>DIALOG_ESMS_PASSWORD</code> and <code>DIALOG_ESMS_SOURCE_ADDRESS</code> (your approved mask, e.g. iDealzLanka).</li>
+                  <li>Set <code>DIALOG_ESMS_PAYMENT_METHOD</code> to <code>0</code> (wallet) or <code>4</code> (API package), and <code>SMS_WEBHOOK_SECRET</code> for delivery reports.</li>
+                  <li>Set <code>SMS_PROVIDER=dialog_esms</code> and redeploy. eSMS does not send between 8 PM and 8 AM.</li>
                 </ol>
               </div>
             </div>

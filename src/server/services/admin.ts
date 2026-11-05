@@ -16,6 +16,14 @@ export const branchSchema = z.object({
   city: z.string().trim().max(80).optional().transform((v) => v || null),
   address: z.string().trim().max(300).optional().transform((v) => v || null),
   phone: z.string().trim().max(30).optional().transform((v) => v || null),
+  brand_name: z.string().trim().max(60, "At most 60 characters").optional().transform((v) => v || null),
+  sms_sender_id: z
+    .string()
+    .trim()
+    .max(11, "SMS masks are at most 11 characters")
+    .regex(/^([A-Za-z0-9][A-Za-z0-9 .&-]{0,10})?$/, "Letters and numbers only (spaces, . & - allowed)")
+    .optional()
+    .transform((v) => v || null),
   is_active: z.boolean().default(true),
 });
 

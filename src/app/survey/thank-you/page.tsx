@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import { CheckCircle2 } from "lucide-react";
 import { SurveyShell } from "@/components/survey/survey-shell";
-import { getPublicBranding } from "@/server/services/public-branding";
+import { getPublicBranding, getShowroomBrand } from "@/server/services/public-branding";
 
-export const metadata: Metadata = { title: "Thank you", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: { absolute: "Thank you for your feedback" }, robots: { index: false, follow: false } };
 
 export default async function ThankYouPage({ searchParams }: PageProps<"/survey/thank-you">) {
   const sp = await searchParams;
-  const brand = await getPublicBranding();
+  const showroom = await getShowroomBrand(typeof sp.b === "string" ? sp.b : null);
+  const brand = await getPublicBranding(showroom?.brandName);
   const already = sp.already === "1";
   const preview = sp.preview === "1";
   return (

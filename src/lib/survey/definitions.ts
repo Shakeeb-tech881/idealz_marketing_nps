@@ -78,13 +78,13 @@ export const SURVEYS: Record<SurveyType, QuestionDef[]> = {
       key: "nps_score",
       kind: "nps",
       required: true,
-      text: "How likely are you to recommend iDealz Lanka to your friends or family based on your purchasing experience?",
+      text: "How likely are you to recommend {brand} to your friends or family based on your purchasing experience?",
     },
     {
       key: "product_satisfaction",
       kind: "emoji",
       required: true,
-      text: "How satisfied are you with the product you purchased from iDealz Lanka?",
+      text: "How satisfied are you with the product you purchased from {brand}?",
       options: SATISFACTION_SCALE,
     },
     {
@@ -98,7 +98,7 @@ export const SURVEYS: Record<SurveyType, QuestionDef[]> = {
       key: "overall_experience_rating",
       kind: "emoji",
       required: true,
-      text: "How would you rate your overall purchasing experience at iDealz Lanka?",
+      text: "How would you rate your overall purchasing experience at {brand}?",
       options: EXPERIENCE_SCALE,
     },
     {
@@ -114,13 +114,13 @@ export const SURVEYS: Record<SurveyType, QuestionDef[]> = {
       key: "nps_score",
       kind: "nps",
       required: true,
-      text: "Based on your interaction with iDealz Lanka, how likely are you to recommend us to your friends or family?",
+      text: "Based on your interaction with {brand}, how likely are you to recommend us to your friends or family?",
     },
     {
       key: "non_purchase_reason",
       kind: "single_select",
       required: true,
-      text: "What was the main reason you decided not to purchase from iDealz Lanka?",
+      text: "What was the main reason you decided not to purchase from {brand}?",
     },
     {
       key: "staff_service_rating",
@@ -140,11 +140,26 @@ export const SURVEYS: Record<SurveyType, QuestionDef[]> = {
       key: "additional_feedback",
       kind: "text",
       required: false,
-      text: "What could iDealz Lanka do to improve your experience and encourage you to purchase from us in the future?",
-      placeholder: "Tell us what would help you choose iDealz Lanka next time…",
+      text: "What could {brand} do to improve your experience and encourage you to purchase from us in the future?",
+      placeholder: "Tell us what would help you choose {brand} next time…",
     },
   ],
 };
+
+export const DEFAULT_BRAND = "iDealz Lanka";
+
+/**
+ * The questions for one survey with "{brand}" filled in — the brand of the
+ * showroom the customer visited (e.g. "iSeven Mobiles"), or the company name.
+ */
+export function surveyFor(type: SurveyType, brandName?: string | null): QuestionDef[] {
+  const brand = brandName?.trim() || DEFAULT_BRAND;
+  return SURVEYS[type].map((q) => ({
+    ...q,
+    text: q.text.replaceAll("{brand}", brand),
+    placeholder: q.placeholder?.replaceAll("{brand}", brand),
+  }));
+}
 
 export const SURVEY_TYPE_LABELS: Record<SurveyType, string> = {
   purchased: "Purchased",

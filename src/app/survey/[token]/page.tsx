@@ -7,7 +7,7 @@ import { loadSurvey } from "@/server/services/public-survey";
 import { getPublicBranding } from "@/server/services/public-branding";
 
 export const metadata: Metadata = {
-  title: "Share your feedback",
+  title: { absolute: "Share your feedback" },
   referrer: "no-referrer",
   robots: { index: false, follow: false },
 };
@@ -29,7 +29,9 @@ export default async function SurveyPage({ params }: PageProps<"/survey/[token]"
   const { token } = await params;
   const h = await headers();
   const ip = h.get("x-real-ip") ?? h.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const [state, brand] = await Promise.all([loadSurvey(token, ip), getPublicBranding()]);
+  const state = await loadSurvey(token, ip);
+  const showroom = "brand" in state ? state.brand : null;
+  const brand = await getPublicBranding(showroom?.brandName);
 
   return (
     <SurveyShell logoUrl={brand.logoUrl} brandName={brand.name}>
@@ -41,7 +43,7 @@ export default async function SurveyPage({ params }: PageProps<"/survey/[token]"
             </h1>
             <p className="mt-2 text-sm text-muted-foreground">5 quick questions · about 1 minute</p>
           </div>
-          <SurveyForm token={token} surveyType={state.surveyType} />
+          <SurveyForm token={token} surveyType={state.surveyType} brandName={brand.name} brandCode={showroom?.brandName ? showroom.code : null} />
         </>
       )}
       {state.state === "completed" && (

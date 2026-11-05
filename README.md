@@ -44,9 +44,9 @@ tests/db/              database tests: migrations + RLS + submission run in PGli
 - SMS status is never overstated: “Sent” = accepted by the provider; “Delivered” only from a provider delivery report; “Opened” only when the survey page loads.
 - Employees are only ranked with at least the configured minimum sample; others are listed as “insufficient sample”.
 
-## Reachout.lk status
+## SMS provider (Dialog eSMS)
 
-Reachout.lk does not publish its developer API publicly, so the adapter in `src/lib/messaging/reachout.ts` deliberately refuses to send (`REACHOUT_NOT_CONFIGURED`) until the request mapping is completed from the official documentation you receive with your account. Until then the app runs with `SMS_PROVIDER=mock`, which logs every message with a **TEST** badge and never sends. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#6-reachoutlk-integration).
+SMS are sent through **Dialog eSMS** (`src/lib/messaging/dialog-esms.ts`, built from the official eSMS API document v3.2). With `SMS_PROVIDER=mock` (the default) the app logs every message with a **TEST** badge, never sends, and shows the survey link to the sender so the survey can be tested end to end. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#6-dialog-esms-integration) to go live.
 
 ## Scripts
 

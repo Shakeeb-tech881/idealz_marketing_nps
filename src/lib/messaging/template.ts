@@ -1,4 +1,4 @@
-export const TEMPLATE_VARIABLES = ["{{customer_name}}", "{{survey_link}}"] as const;
+export const TEMPLATE_VARIABLES = ["{{customer_name}}", "{{survey_link}}", "{{branch_name}}", "{{brand_name}}"] as const;
 
 /** First name only, to keep messages short and personal. */
 export function firstName(fullName: string): string {
@@ -6,9 +6,18 @@ export function firstName(fullName: string): string {
   return n || "Customer";
 }
 
-export function renderTemplate(body: string, vars: { customerName: string; surveyLink: string }): string {
+/**
+ * {{branch_name}} = the showroom visited (e.g. "iDealz Marino");
+ * {{brand_name}}  = that showroom's customer-facing brand (e.g. "iSeven Mobiles", else "iDealz Lanka").
+ */
+export function renderTemplate(
+  body: string,
+  vars: { customerName: string; surveyLink: string; branchName?: string | null; brandName?: string | null },
+): string {
   return body
     .replaceAll("{{customer_name}}", firstName(vars.customerName))
+    .replaceAll("{{branch_name}}", vars.branchName?.trim() || "our showroom")
+    .replaceAll("{{brand_name}}", vars.brandName?.trim() || "iDealz Lanka")
     .replaceAll("{{survey_link}}", vars.surveyLink);
 }
 

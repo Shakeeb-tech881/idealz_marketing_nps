@@ -14,6 +14,12 @@ export interface DispatchOutcome {
   customerName: string;
   status: "sent" | "failed" | "skipped";
   reason?: string;
+  /**
+   * TEST MODE ONLY (mock SMS provider): the survey link that would have been
+   * texted, returned once to the sender so the survey can be tried end to end.
+   * Never stored, never set when a real SMS provider is active.
+   */
+  testLink?: string;
 }
 
 export interface DispatchSummary {
@@ -28,6 +34,7 @@ interface InteractionRow {
   id: string;
   purchase_status: "purchased" | "not_purchased";
   branch_id: string;
+  branches: { name: string; sms_sender_id: string | null; brand_name: string | null } | null;
   customers: { id: string; full_name: string; mobile: string | null; sms_opt_out: boolean } | null;
   survey_invitations: { id: string; status: string; expires_at: string }[];
 }
@@ -64,13 +71,27 @@ async function sentToday(supabase: SupabaseClient): Promise<number> {
 async function sendForInvitation(
   supabase: SupabaseClient,
   actor: Profile,
-  args: { invitationId: string; customerId: string; branchId: string; mobile: string; customerName: string; body: string; expiryDays: number; previousSendCount: number },
-): Promise<{ ok: boolean; reason?: string; isTest: boolean }> {
+  args: {
+    invitationId: string;
+    customerId: string;
+    branchId: string;
+    branchName: string | null;
+    /** Customer-facing brand for {{brand_name}}. */
+    brandName: string;
+    /** The showroom's SMS mask; null = provider default mask. */
+    senderId: string | null;
+    mobile: string;
+    customerName: string;
+    body: string;
+    expiryDays: number;
+    previousSendCount: number;
+  },
+): Promise<{ ok: boolean; reason?: string; isTest: boolean; testLink?: string }> {
   const env = serverEnv();
   const provider = getSmsProvider();
   const token = generateSurveyToken();
   const link = surveyUrl(env.NEXT_PUBLIC_APP_URL, token);
-  const message = renderTemplate(args.body, { customerName: args.customerName, surveyLink: link });
+  const message = renderTemplate(args.body, { customerName: args.customerName, surveyLink: link, branchName: args.branchName, brandName: args.brandName });
   const expiresAt = new Date(Date.now() + args.expiryDays * 24 * 3600 * 1000).toISOString();
 
   const { error: rotateError } = await supabase
@@ -87,6 +108,7 @@ async function sendForInvitation(
       branch_id: args.branchId,
       provider: provider.name,
       is_test: provider.isTest,
+      sender_id: args.senderId,
       recipient: args.mobile,
       body_redacted: redactLink(message, link),
       status: "queued",
@@ -97,7 +119,7 @@ async function sendForInvitation(
     .single();
   if (logError || !log) return { ok: false, reason: logError?.message ?? "Could not create message log", isTest: provider.isTest };
 
-  const result = await provider.send({ to: args.mobile, body: message, reference: log.id });
+  const result = await provider.send({ to: args.mobile, body: message, reference: log.id, senderId: args.senderId });
   const now = new Date().toISOString();
   if (result.ok) {
     await supabase
@@ -113,7 +135,9 @@ async function sendForInvitation(
       .from("survey_invitations")
       .update({ status: "sent", sent_at: now, last_error: null, send_count: args.previousSendCount + 1 })
       .eq("id", args.invitationId);
-    return { ok: true, isTest: provider.isTest };
+    // The mock provider never delivers anything, so hand the link back to the
+    // signed-in sender instead. A real provider never gets here with a link.
+    return { ok: true, isTest: provider.isTest, testLink: provider.isTest ? link : undefined };
   }
   await supabase
     .from("message_logs")
@@ -155,7 +179,7 @@ export async function createAndSendInvitations(
   const body = await templateBody(supabase, input.surveyType, input.templateId);
   const { data, error } = await supabase
     .from("customer_interactions")
-    .select("id, purchase_status, branch_id, customers(id, full_name, mobile, sms_opt_out), survey_invitations(id, status, expires_at)")
+    .select("id, purchase_status, branch_id, branches(name, sms_sender_id, brand_name), customers(id, full_name, mobile, sms_opt_out), survey_invitations(id, status, expires_at)")
     .in("id", ids);
   if (error) throw new Error(error.message);
 
@@ -201,13 +225,16 @@ export async function createAndSendInvitations(
       invitationId: inv.id,
       customerId: c.id,
       branchId: row.branch_id,
+      branchName: row.branches?.name ?? null,
+      brandName: row.branches?.brand_name || settings.company_display_name,
+      senderId: row.branches?.sms_sender_id ?? null,
       mobile: c.mobile,
       customerName: c.full_name,
       body,
       expiryDays: settings.survey_expiry_days,
       previousSendCount: 0,
     });
-    outcomes.push({ interactionId: row.id, customerName: name, status: res.ok ? "sent" : "failed", reason: res.reason });
+    outcomes.push({ interactionId: row.id, customerName: name, status: res.ok ? "sent" : "failed", reason: res.reason, testLink: res.testLink });
   }
 
   for (const id of ids) {
@@ -236,7 +263,7 @@ export async function resendInvitation(actor: Profile, invitationId: string, opt
   const settings = await getSettings(supabase);
   const { data: inv, error } = await supabase
     .from("survey_invitations")
-    .select("id, status, survey_type, send_count, branch_id, customers(id, full_name, mobile, sms_opt_out)")
+    .select("id, status, survey_type, send_count, branch_id, branches(name, sms_sender_id, brand_name), customers(id, full_name, mobile, sms_opt_out)")
     .eq("id", invitationId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -253,6 +280,9 @@ export async function resendInvitation(actor: Profile, invitationId: string, opt
     invitationId: inv.id,
     customerId: c.id,
     branchId: inv.branch_id,
+    branchName: (inv.branches as unknown as InteractionRow["branches"])?.name ?? null,
+    brandName: (inv.branches as unknown as InteractionRow["branches"])?.brand_name || settings.company_display_name,
+    senderId: (inv.branches as unknown as InteractionRow["branches"])?.sms_sender_id ?? null,
     mobile: c.mobile,
     customerName: c.full_name,
     body,
@@ -266,5 +296,5 @@ export async function resendInvitation(actor: Profile, invitationId: string, opt
     p_details: { ok: res.ok },
   });
   if (!res.ok) throw new Error(res.reason ?? "Message could not be sent.");
-  return { isTest: res.isTest };
+  return { isTest: res.isTest, testLink: res.testLink };
 }

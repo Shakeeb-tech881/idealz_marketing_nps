@@ -24,8 +24,8 @@ export class MockSmsProvider implements SmsProvider {
     return {
       ok: true,
       providerMessageId: `mock-${input.reference}`,
-      providerStatus: "accepted (test – not sent)",
-      raw: { mock: true, to: input.to, length: input.body.length },
+      providerStatus: `accepted (test – not sent)${input.senderId ? ` · from ${input.senderId}` : " · default mask"}`,
+      raw: { mock: true, to: input.to, length: input.body.length, sender_id: input.senderId ?? null },
     };
   }
 }

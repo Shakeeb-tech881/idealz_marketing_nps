@@ -91,7 +91,7 @@ export function GeneralSettingsForm({ initial }: { initial: AppSettings }) {
 
 export function BranchDialog({ branch }: { branch?: Branch }) {
   const [open, setOpen] = useState(false);
-  const [v, setV] = useState({ name: branch?.name ?? "", code: branch?.code ?? "", city: branch?.city ?? "", address: branch?.address ?? "", phone: branch?.phone ?? "", is_active: branch?.is_active ?? true });
+  const [v, setV] = useState({ name: branch?.name ?? "", code: branch?.code ?? "", city: branch?.city ?? "", address: branch?.address ?? "", phone: branch?.phone ?? "", brand_name: branch?.brand_name ?? "", sms_sender_id: branch?.sms_sender_id ?? "", is_active: branch?.is_active ?? true });
   const [errors, setErrors] = useState<Errors>({});
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -108,6 +108,24 @@ export function BranchDialog({ branch }: { branch?: Branch }) {
           <FormField label="City" htmlFor="b-city"><Input id="b-city" value={v.city} onChange={(e) => setV({ ...v, city: e.target.value })} /></FormField>
           <FormField label="Phone" htmlFor="b-phone"><Input id="b-phone" value={v.phone} onChange={(e) => setV({ ...v, phone: e.target.value })} /></FormField>
           <FormField label="Address" htmlFor="b-addr" className="sm:col-span-2"><Input id="b-addr" value={v.address} onChange={(e) => setV({ ...v, address: e.target.value })} /></FormField>
+          <FormField
+            label="Brand shown to customers"
+            htmlFor="b-brand"
+            className="sm:col-span-2"
+            error={errors.brand_name?.[0]}
+            hint="Used in the SMS ({{brand_name}}), survey questions and thank-you page, e.g. iSeven Mobiles. Leave empty to use the company name."
+          >
+            <Input id="b-brand" maxLength={60} value={v.brand_name} onChange={(e) => setV({ ...v, brand_name: e.target.value })} />
+          </FormField>
+          <FormField
+            label="SMS sender ID (mask)"
+            htmlFor="b-mask"
+            className="sm:col-span-2"
+            error={errors.sms_sender_id?.[0]}
+            hint={`Max 11 characters, exactly as approved by Dialog eSMS (e.g. iDealzPrime). Leave empty to use the default mask. ${v.sms_sender_id.length}/11`}
+          >
+            <Input id="b-mask" maxLength={11} autoComplete="off" spellCheck={false} value={v.sms_sender_id} onChange={(e) => setV({ ...v, sms_sender_id: e.target.value.replace(/[^A-Za-z0-9 .&-]/g, "") })} />
+          </FormField>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={v.is_active} onCheckedChange={(c) => setV({ ...v, is_active: c })} /> Active</label>
         </div>
         <DialogFooter>

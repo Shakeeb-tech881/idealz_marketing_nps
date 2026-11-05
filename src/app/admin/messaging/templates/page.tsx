@@ -17,7 +17,7 @@ export default async function TemplatesPage() {
       <Link href="/admin/messaging" className="mb-3 inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
         <ArrowLeft className="size-4" /> Survey messaging
       </Link>
-      <PageHeader title="SMS templates" description="Use {{customer_name}} (first name) and {{survey_link}} (required). Purchased and non-purchased templates are kept separate." />
+      <PageHeader title="SMS templates" description="Use {{customer_name}} (first name), {{brand_name}} (iDealz Lanka, or iSeven Mobiles for iSeven customers), {{branch_name}} (showroom visited) and {{survey_link}} (required). Each SMS is sent from the showroom's own mask. Purchased and non-purchased templates are kept separate." />
       <TemplateManager templates={data ?? []} canEdit={isOrgWide(profile)} />
     </>
   );

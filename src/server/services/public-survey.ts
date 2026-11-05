@@ -4,9 +4,27 @@ import { hashSurveyToken, isWellFormedToken } from "@/lib/tokens";
 import { nonPurchasedAnswersSchema, purchasedAnswersSchema } from "@/lib/survey/schema";
 import type { SurveyType } from "@/lib/survey/definitions";
 
+/** Showroom branding for the survey page: branch code + public brand name only. */
+export type SurveyBrand = { code: string; brandName: string | null } | null;
+
 export type SurveyState =
-  | { state: "open"; surveyType: SurveyType }
-  | { state: "completed" | "expired" | "invalid" | "rate_limited" | "unavailable" };
+  | { state: "open"; surveyType: SurveyType; brand: SurveyBrand }
+  | { state: "completed" | "expired"; brand: SurveyBrand }
+  | { state: "invalid" | "rate_limited" | "unavailable" };
+
+async function brandForToken(tokenHash: string): Promise<SurveyBrand> {
+  try {
+    const { data } = await createAdminClient()
+      .from("survey_invitations")
+      .select("branches(code, brand_name)")
+      .eq("token_hash", tokenHash)
+      .maybeSingle();
+    const b = (data?.branches ?? null) as unknown as { code: string; brand_name: string | null } | null;
+    return b ? { code: b.code, brandName: b.brand_name } : null;
+  } catch {
+    return null; // branding is cosmetic — fall back to the company brand
+  }
+}
 
 const OPEN_LIMIT = { limit: 60, windowSeconds: 600 };
 const SUBMIT_LIMIT_IP = { limit: 20, windowSeconds: 600 };
@@ -35,12 +53,13 @@ export async function loadSurvey(token: string, clientIp: string): Promise<Surve
   }
   try {
     const admin = createAdminClient();
-    const { data, error } = await admin.rpc("open_survey_invitation", { p_token_hash: hashSurveyToken(token) });
+    const tokenHash = hashSurveyToken(token);
+    const { data, error } = await admin.rpc("open_survey_invitation", { p_token_hash: tokenHash });
     if (error) throw error;
     const row = (Array.isArray(data) ? data[0] : data) as { survey_type: SurveyType | null; state: string } | null;
     if (!row) return { state: "invalid" };
-    if (row.state === "open" && row.survey_type) return { state: "open", surveyType: row.survey_type };
-    if (row.state === "completed" || row.state === "expired") return { state: row.state };
+    if (row.state === "open" && row.survey_type) return { state: "open", surveyType: row.survey_type, brand: await brandForToken(tokenHash) };
+    if (row.state === "completed" || row.state === "expired") return { state: row.state, brand: await brandForToken(tokenHash) };
     return { state: "invalid" };
   } catch (e) {
     console.error("[survey] load failed", e instanceof Error ? e.message : e);

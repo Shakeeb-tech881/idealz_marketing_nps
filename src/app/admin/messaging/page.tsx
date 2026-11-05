@@ -90,7 +90,7 @@ export default async function MessagingPage({ searchParams }: PageProps<"/admin/
         <KpiCard label="Failed this month" accent="detractor" value={formatNumber(failedMonth.count ?? 0)} sub={<Link className="hover:underline" href="/admin/messaging/history?status=failed">Review & retry</Link>} />
         <KpiCard
           label="SMS provider"
-          value={provider ? (provider.isTest ? "Test mode" : provider.name === "reachout" ? "Reachout.lk" : provider.name) : "Not configured"}
+          value={provider ? (provider.isTest ? "Test mode" : provider.label) : "Not configured"}
           sub={provider?.isTest ? "Messages are logged, not sent" : provider && !provider.ready ? "Configuration incomplete" : "Live"}
         />
       </div>

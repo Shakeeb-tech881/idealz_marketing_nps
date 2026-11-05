@@ -33,7 +33,7 @@ export function TemplateManager({ templates, canEdit }: { templates: Tpl[]; canE
   const [errors, setErrors] = useState<Record<string, string[] | undefined>>({});
   const [pending, start] = useTransition();
   const router = useRouter();
-  const seg = editing ? smsSegments(renderTemplate(editing.v.body, { customerName: "Nimal", surveyLink: `https://feedback.idealzlanka.com/survey/${"x".repeat(43)}` })) : null;
+  const seg = editing ? smsSegments(renderTemplate(editing.v.body, { customerName: "Nimal", branchName: "iSeven Mobiles", brandName: "iSeven Mobiles", surveyLink: `https://cx.idealz.lk/s/${"x".repeat(22)}` })) : null;
 
   return (
     <>

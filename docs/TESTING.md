@@ -23,11 +23,11 @@ Runs every migration in an in-process Postgres (PGlite) with Supabase's `auth` s
 | Follow-up | status / assignment / note history is recorded; other branches cannot update |
 
 ### Unit (`tests/unit/`)
-NPS maths (spec example +45, zero vs no data, rounding, bounds), survey definitions (exactly 5 questions, no mixing), answer validation, Sri Lankan mobile normalisation, customer form rules, import column guessing and date / status parsing, SMS template rendering, link redaction and segment counting, mock provider failures, Reachout adapter lock, keyword themes, insight generation never guessing without data / below sample thresholds.
+NPS maths (spec example +45, zero vs no data, rounding, bounds), survey definitions (exactly 5 questions, no mixing), answer validation, Sri Lankan mobile normalisation, customer form rules, import column guessing and date / status parsing, SMS template rendering, link redaction and segment counting, mock provider failures, Dialog eSMS adapter against a fake eSMS server (login/token reuse, token expiry, wrong-password lock protection, blackout, balance, delivery-report parsing), keyword themes, insight generation never guessing without data / below sample thresholds.
 
 ## Manual test plan (staging)
 
-Use `SMS_PROVIDER=mock`. Copy survey links from a test invitation by temporarily logging them, or use the preview pages for UI checks.
+Use `SMS_PROVIDER=mock`. After **Send survey** the app shows the test survey link (test mode only) so you can open and submit it; preview pages are available for UI checks.
 
 **Survey** — `/survey/preview/purchased` and `/survey/preview/non_purchased` on iPhone, Android and desktop:
 - NPS 11 boxes, colour bands, endpoints, keyboard arrows; emoji and star selection by tap and keyboard; selected label shown
@@ -45,4 +45,4 @@ Use `SMS_PROVIDER=mock`. Copy survey links from a test invitation by temporarily
 
 **Exports** — download each report in Excel, CSV and PDF; values match the screen; staff-masked mobiles.
 
-**Security** — call `/api/reports` signed out (403); `/api/cron/maintenance` without secret (401); `/admin` signed out redirects to login; confirm no `SUPABASE_SERVICE_ROLE_KEY` / Reachout values appear in browser bundles (`grep` the `.next/static` output).
+**Security** — call `/api/reports` signed out (403); `/api/cron/maintenance` without secret (401); `/admin` signed out redirects to login; confirm no `SUPABASE_SERVICE_ROLE_KEY` / Dialog eSMS credentials appear in browser bundles (`grep` the `.next/static` output).

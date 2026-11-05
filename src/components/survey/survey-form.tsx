@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Loader2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { MAX_FEEDBACK_LENGTH, SURVEYS, type AnswerKey, type SurveyType } from "@/lib/survey/definitions";
+import { MAX_FEEDBACK_LENGTH, surveyFor, type AnswerKey, type SurveyType } from "@/lib/survey/definitions";
 import { NpsScale } from "./nps-scale";
 import { EmojiScale } from "./emoji-scale";
 import { StarRating } from "./star-rating";
@@ -23,8 +23,23 @@ const ERROR_MESSAGES: Record<string, string> = {
   unavailable: "We couldn't save your response right now. Please try again shortly.",
 };
 
-export function SurveyForm({ token, surveyType, preview = false }: { token: string; surveyType: SurveyType; preview?: boolean }) {
-  const questions = SURVEYS[surveyType];
+export function SurveyForm({
+  token,
+  surveyType,
+  preview = false,
+  brandName,
+  brandCode,
+}: {
+  token: string;
+  surveyType: SurveyType;
+  preview?: boolean;
+  /** Brand of the showroom visited, shown in the questions. */
+  brandName?: string | null;
+  /** Branch code, so the thank-you page shows the same brand. */
+  brandCode?: string | null;
+}) {
+  const questions = surveyFor(surveyType, brandName);
+  const brandQs = brandCode ? `&b=${encodeURIComponent(brandCode)}` : "";
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState<Answers>({});
   const [error, setError] = useState<string | null>(null);
@@ -88,7 +103,7 @@ export function SurveyForm({ token, surveyType, preview = false }: { token: stri
     setError(null);
     if (preview) {
       setSubmitted(true);
-      router.push("/survey/thank-you?preview=1");
+      router.push(`/survey/thank-you?preview=1${brandQs}`);
       return;
     }
     startTransition(async () => {
@@ -98,7 +113,7 @@ export function SurveyForm({ token, surveyType, preview = false }: { token: stri
       const res = await submitSurveyAction(token, payload);
       if (res.ok || res.error === "already_submitted") {
         setSubmitted(true);
-        router.replace(res.ok ? "/survey/thank-you" : "/survey/thank-you?already=1");
+        router.replace(res.ok ? `/survey/thank-you?done=1${brandQs}` : `/survey/thank-you?already=1${brandQs}`);
         return;
       }
       setError(ERROR_MESSAGES[res.error] ?? ERROR_MESSAGES.unavailable);

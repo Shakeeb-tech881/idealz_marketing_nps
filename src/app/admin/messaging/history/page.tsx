@@ -31,6 +31,7 @@ interface Row {
   body_redacted: string;
   status: MessageStatus;
   provider_status: string | null;
+  sender_id: string | null;
   error_code: string | null;
   error_message: string | null;
   attempt: number;
@@ -48,7 +49,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/admin/me
 
   let q = supabase
     .from("message_logs")
-    .select("id, created_at, provider, is_test, recipient, body_redacted, status, provider_status, error_code, error_message, attempt, customers(full_name), branches(name), survey_invitations(id, status, survey_type)", { count: "exact" })
+    .select("id, created_at, provider, is_test, recipient, body_redacted, status, provider_status, sender_id, error_code, error_message, attempt, customers(full_name), branches(name), survey_invitations(id, status, survey_type)", { count: "exact" })
     .order("created_at", { ascending: false });
   if (status) q = q.eq("status", status);
   const start = (page - 1) * PAGE_SIZE;
@@ -99,7 +100,10 @@ export default async function HistoryPage({ searchParams }: PageProps<"/admin/me
                       <TableCell className="pl-5 tabular text-muted-foreground">{formatDateTime(r.created_at)}</TableCell>
                       <TableCell className="font-medium">{r.customers?.full_name ?? "—"}</TableCell>
                       <TableCell className="tabular text-muted-foreground">{showMobile ? formatMobile(r.recipient) : maskMobile(r.recipient)}</TableCell>
-                      <TableCell>{r.branches?.name ?? "—"}</TableCell>
+                      <TableCell>
+                        {r.branches?.name ?? "—"}
+                        {r.sender_id && <span className="block font-mono text-[11px] text-muted-foreground">from {r.sender_id}</span>}
+                      </TableCell>
                       <TableCell>
                         <span className={cn("text-sm font-medium", r.status === "failed" ? "text-destructive" : r.status === "delivered" ? "text-[#087a08]" : "text-foreground")}>{LABEL[r.status]}</span>
                         {r.is_test && <span className="ml-2"><TestBadge /></span>}

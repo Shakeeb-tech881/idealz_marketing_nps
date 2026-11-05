@@ -24,6 +24,10 @@ export interface Branch {
   city: string | null;
   address: string | null;
   phone: string | null;
+  /** Approved SMS mask for this showroom; null = default mask. */
+  sms_sender_id: string | null;
+  /** Brand customers of this showroom see (SMS, survey); null = company name. */
+  brand_name: string | null;
   is_active: boolean;
 }
 

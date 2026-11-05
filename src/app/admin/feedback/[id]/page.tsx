@@ -6,7 +6,7 @@ import { canSeeContactDetails, requirePageRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { formatMobile, maskMobile } from "@/lib/phone";
-import { EXPERIENCE_SCALE, NON_PURCHASE_REASON_LABELS, SATISFACTION_SCALE, STAR_SCALE, SURVEYS, type NonPurchaseReason } from "@/lib/survey/definitions";
+import { EXPERIENCE_SCALE, NON_PURCHASE_REASON_LABELS, SATISFACTION_SCALE, STAR_SCALE, surveyFor, type NonPurchaseReason } from "@/lib/survey/definitions";
 import { RESOLUTION_LABELS, ROLE_LABELS, type ResolutionStatus } from "@/lib/types";
 import { PageHeader } from "@/components/admin/page-header";
 import { Panel } from "@/components/admin/panel";
@@ -23,7 +23,7 @@ export default async function FeedbackDetailPage({ params }: PageProps<"/admin/f
   const { data: r } = await supabase
     .from("survey_responses")
     .select(
-      "id, submitted_at, survey_type, nps_score, nps_category, staff_service_rating, product_satisfaction, overall_experience_rating, product_pricing_satisfaction, non_purchase_reason, other_reason_description, additional_feedback, resolution_status, assigned_to, follow_up_due, branch_id, customer_id, customers(id, full_name, mobile, email), branches(name), employees(full_name), customer_interactions(interaction_date, product_category, product_model, invoice_number)",
+      "id, submitted_at, survey_type, nps_score, nps_category, staff_service_rating, product_satisfaction, overall_experience_rating, product_pricing_satisfaction, non_purchase_reason, other_reason_description, additional_feedback, resolution_status, assigned_to, follow_up_due, branch_id, customer_id, customers(id, full_name, mobile, email), branches(name, brand_name), employees(full_name), customer_interactions(interaction_date, product_category, product_model, invoice_number)",
     )
     .eq("id", id)
     .maybeSingle();
@@ -39,7 +39,7 @@ export default async function FeedbackDetailPage({ params }: PageProps<"/admin/f
   const ix = r.customer_interactions as unknown as { interaction_date: string; product_category: string | null; product_model: string | null; invoice_number: string | null } | null;
   const showContact = canSeeContactDetails(profile);
   const canManage = profile.role !== "staff";
-  const q = SURVEYS[r.survey_type as "purchased" | "non_purchased"];
+  const q = surveyFor(r.survey_type as "purchased" | "non_purchased", (r.branches as unknown as { brand_name: string | null } | null)?.brand_name);
   const label = (scale: typeof SATISFACTION_SCALE, v: number | null) => (v ? `${scale[v - 1]?.emoji ?? ""} ${scale[v - 1]?.label ?? v}` : "—");
 
   const answers =

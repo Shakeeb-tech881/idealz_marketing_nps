@@ -7,6 +7,8 @@ export interface SendSmsInput {
   to: string; // E.164
   body: string;
   reference: string; // our message log id, for correlation
+  /** SMS mask for this message (e.g. the showroom's). Null/empty = provider default. */
+  senderId?: string | null;
 }
 
 export type SendSmsResult =
@@ -26,9 +28,12 @@ export type SendSmsResult =
 
 export interface DeliveryReport {
   providerMessageId: string;
-  status: "delivered" | "failed";
+  /** "submitted" is informational (handed to the network) and never overrides a final state. */
+  status: "submitted" | "delivered" | "failed";
   providerStatus: string;
   occurredAt: Date;
+  /** Local part of the recipient number if the provider sends it, for cross-checking. */
+  recipient?: string | null;
   raw: unknown;
 }
 
@@ -39,6 +44,8 @@ export interface SmsProvider {
   /** Whether the provider can push delivery reports to our webhook. */
   readonly supportsDeliveryReports: boolean;
   send(input: SendSmsInput): Promise<SendSmsResult>;
-  /** Parse a delivery-report webhook payload, or null if not recognised. */
+  /** Parse a delivery-report webhook payload (JSON body or URL query), or null if not recognised. */
   parseDeliveryReport?(payload: unknown): DeliveryReport | null;
+  /** Missing / invalid configuration, shown on Settings → SMS integration. */
+  configurationProblems?(): string[];
 }

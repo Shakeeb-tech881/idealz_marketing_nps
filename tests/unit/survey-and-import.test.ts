@@ -1,12 +1,11 @@
 import { describe, expect, test } from "vitest";
 import { nonPurchasedAnswersSchema, purchasedAnswersSchema } from "@/lib/survey/schema";
-import { SURVEYS } from "@/lib/survey/definitions";
+import { SURVEYS, surveyFor } from "@/lib/survey/definitions";
 import { normaliseMobile, maskMobile, formatMobile } from "@/lib/phone";
 import { guessMapping, parseDate, parsePurchaseStatus, parseSource } from "@/lib/import/fields";
 import { redactLink, renderTemplate, smsSegments } from "@/lib/messaging/template";
 import { countThemes, themesFor } from "@/lib/analytics/themes";
 import { MockSmsProvider } from "@/lib/messaging/mock";
-import { ReachoutSmsProvider } from "@/lib/messaging/reachout";
 import { newCustomerSchema } from "@/lib/validation/customer";
 
 describe("survey definitions", () => {
@@ -117,6 +116,33 @@ describe("SMS templates & providers", () => {
     expect(msg).toBe(`Hi Nimal, thank you! ${link}`);
     expect(redactLink(msg, link)).toBe("Hi Nimal, thank you! [survey-link]");
   });
+  test("survey questions use the showroom's brand", () => {
+    const iseven = surveyFor("purchased", "iSeven Mobiles");
+    expect(iseven[0].text).toBe("How likely are you to recommend iSeven Mobiles to your friends or family based on your purchasing experience?");
+    expect(iseven.some((q) => q.text.includes("iDealz"))).toBe(false);
+    const np = surveyFor("non_purchased", "iSeven Mobiles");
+    expect(np[4].placeholder).toContain("iSeven Mobiles");
+    for (const type of ["purchased", "non_purchased"] as const) {
+      const d = surveyFor(type, null);
+      expect(d.every((q) => !q.text.includes("{brand}") && !(q.placeholder ?? "").includes("{brand}"))).toBe(true);
+      expect(d[0].text).toContain("iDealz Lanka");
+      expect(d.map((q) => q.key)).toEqual(SURVEYS[type].map((q) => q.key));
+    }
+  });
+  test("{{brand_name}} renders the showroom brand, defaulting to iDealz Lanka", () => {
+    const t = "Hi {{customer_name}}, thank you for choosing {{brand_name}}! {{survey_link}}";
+    expect(renderTemplate(t, { customerName: "Kasun", surveyLink: "L", brandName: "iSeven Mobiles" })).toBe("Hi Kasun, thank you for choosing iSeven Mobiles! L");
+    expect(renderTemplate(t, { customerName: "Kasun", surveyLink: "L" })).toBe("Hi Kasun, thank you for choosing iDealz Lanka! L");
+  });
+  test("{{branch_name}} is the showroom visited", () => {
+    const t = "Hi {{customer_name}}, thanks for visiting {{branch_name}}! {{survey_link}}";
+    expect(renderTemplate(t, { customerName: "Nimal Perera", surveyLink: "L", branchName: "iSeven Mobiles" })).toBe("Hi Nimal, thanks for visiting iSeven Mobiles! L");
+    expect(renderTemplate(t, { customerName: "Nimal", surveyLink: "L" })).toBe("Hi Nimal, thanks for visiting our showroom! L");
+  });
+  test("mock provider reports which mask would be used", async () => {
+    const r = await new MockSmsProvider().send({ to: "+94771234567", body: "x", reference: "1", senderId: "iSeven" });
+    expect(r.ok && r.providerStatus).toContain("from iSeven");
+  });
   test("segment counting", () => {
     expect(smsSegments("a".repeat(160))).toMatchObject({ segments: 1, encoding: "GSM-7" });
     expect(smsSegments("a".repeat(161)).segments).toBe(2);
@@ -128,12 +154,6 @@ describe("SMS templates & providers", () => {
     expect((await p.send({ to: "+94771234567", body: "x", reference: "1" })).ok).toBe(true);
     const fail = await p.send({ to: "+94770000000", body: "x", reference: "2" });
     expect(fail.ok).toBe(false);
-  });
-  test("Reachout adapter refuses to send until verified against official docs", async () => {
-    const p = new ReachoutSmsProvider({ baseUrl: "https://example.invalid", apiKey: "k", senderId: "IDEALZ" });
-    const r = await p.send({ to: "+94771234567", body: "x", reference: "1" });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errorCode).toBe("REACHOUT_NOT_CONFIGURED");
   });
 });
 

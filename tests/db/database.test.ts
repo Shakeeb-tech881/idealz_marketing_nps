@@ -226,3 +226,54 @@ describe("analytics & feedback workflow", () => {
     expect(completedExpired.n).toBe(0);
   });
 });
+
+describe("showroom SMS masks", () => {
+  test("the three main showrooms exist with no mask yet, and re-running the upgrade adds no duplicates", async () => {
+    const before = await db.query<{ code: string; sms_sender_id: string | null }>(
+      `select code, sms_sender_id from branches where code in ('PRIME','MARINO','ISEVEN') order by code`);
+    expect(before.rows.map((r) => r.code)).toEqual(["ISEVEN", "MARINO", "PRIME"]);
+    expect(before.rows.every((r) => r.sms_sender_id === null)).toBe(true);
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-showrooms.sql"), "utf8"));
+    const after = await one<{ n: number }>(`select count(*)::int as n from branches where code in ('PRIME','MARINO','ISEVEN')`);
+    expect(after.n).toBe(3);
+  });
+  test("masks are limited to 11 valid characters", async () => {
+    await db.exec(`update branches set sms_sender_id = 'iDealzPrime' where code = 'PRIME'`);
+    await expect(db.exec(`update branches set sms_sender_id = 'iDealzMarino' where code = 'MARINO'`)).rejects.toThrow();
+    await expect(db.exec(`update branches set sms_sender_id = 'iSeven!' where code = 'ISEVEN'`)).rejects.toThrow();
+    await db.exec(`update branches set sms_sender_id = 'iSeven' where code = 'ISEVEN'`);
+    const m = await one<{ sms_sender_id: string }>(`select sms_sender_id from branches where code = 'PRIME'`);
+    expect(m.sms_sender_id).toBe("iDealzPrime");
+  });
+  test("only a Super Admin can change a showroom's mask", async () => {
+    const res = await as(db, "authenticated", U.mgmt, (q) =>
+      q(`update branches set sms_sender_id = 'Hacked' where code = 'PRIME' returning id`));
+    expect(res.rows).toHaveLength(0);
+    const ok = await as(db, "authenticated", U.admin, (q) =>
+      q(`update branches set sms_sender_id = 'iDealzPrm' where code = 'PRIME' returning id`));
+    expect(ok.rows).toHaveLength(1);
+  });
+  test("iSeven Mobiles has its own brand; iDealz showrooms use the company brand", async () => {
+    const rows = await db.query<{ code: string; brand_name: string | null }>(
+      `select code, brand_name from branches where code in ('PRIME','MARINO','ISEVEN') order by code`);
+    expect(rows.rows).toEqual([
+      { code: "ISEVEN", brand_name: "iSeven Mobiles" },
+      { code: "MARINO", brand_name: null },
+      { code: "PRIME", brand_name: null },
+    ]);
+  });
+  test("SMS templates use {{brand_name}} instead of a fixed company name", async () => {
+    const t = await db.query<{ body: string }>(`select body from message_templates`);
+    expect(t.rows.length).toBeGreaterThan(0);
+    expect(t.rows.every((r) => !r.body.includes("iDealz Lanka"))).toBe(true);
+    expect(t.rows.some((r) => r.body.includes("{{brand_name}}"))).toBe(true);
+    expect(t.rows.every((r) => r.body.includes("{{survey_link}}"))).toBe(true);
+  });
+  test("message logs record which mask was used", async () => {
+    const col = await one<{ n: number }>(
+      `select count(*)::int as n from information_schema.columns where table_name = 'message_logs' and column_name = 'sender_id'`);
+    expect(col.n).toBe(1);
+  });
+});

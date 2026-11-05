@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Panel } from "@/components/admin/panel";
 import { EmptyState } from "@/components/admin/empty-state";
 import { TestBadge } from "@/components/admin/badges";
+import { TestSurveyLink } from "@/components/admin/test-survey-link";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { formatDate } from "@/lib/format";
@@ -45,8 +46,16 @@ export function SendWizard({ surveyType, candidates, templates, branches, appUrl
 
   const template = templates.find((t) => t.id === templateId);
   const sampleName = candidates.find((c) => selected.has(c.id))?.name ?? candidates[0]?.name ?? "Nimal";
-  const preview = template ? renderTemplate(template.body, { customerName: sampleName, surveyLink: `${appUrl.replace(/\/$/, "")}/survey/AbC123…` }) : "";
-  const segments = useMemo(() => smsSegments(template ? renderTemplate(template.body, { customerName: sampleName, surveyLink: `${appUrl.replace(/\/$/, "")}/survey/${"x".repeat(43)}` }) : ""), [template, sampleName, appUrl]);
+  const sampleBranch = candidates.find((c) => selected.has(c.id))?.branch ?? candidates[0]?.branch ?? branches[0]?.name ?? "iDealz Prime";
+  const sampleBrand = branches.find((b) => b.name === sampleBranch)?.brand_name ?? null;
+  // Count against the longest showroom name / brand so no branch's SMS runs into a second part unexpectedly.
+  const longestBranch = branches.reduce((a, b) => (b.name.length > a.length ? b.name : a), sampleBranch);
+  const longestBrand = branches.reduce((a, b) => ((b.brand_name ?? "").length > a.length ? (b.brand_name as string) : a), "iDealz Lanka");
+  const preview = template ? renderTemplate(template.body, { customerName: sampleName, branchName: sampleBranch, brandName: sampleBrand, surveyLink: `${appUrl.replace(/\/$/, "")}/s/AbC123…` }) : "";
+  const segments = useMemo(
+    () => smsSegments(template ? renderTemplate(template.body, { customerName: sampleName, branchName: longestBranch, brandName: longestBrand, surveyLink: `${appUrl.replace(/\/$/, "")}/s/${"x".repeat(22)}` }) : ""),
+    [template, sampleName, longestBranch, longestBrand, appUrl],
+  );
 
   function nav(patch: Record<string, string | null>) {
     const next = new URLSearchParams(sp.toString());
@@ -178,6 +187,19 @@ export function SendWizard({ surveyType, candidates, templates, branches, appUrl
                 </li>
               ))}
             </ul>
+            {summary.outcomes.some((o) => o.testLink) && (
+              <div className="mt-4 border-t border-border pt-3">
+                <p className="mb-2 flex items-center gap-2 text-xs font-medium"><TestBadge /> Test survey links – shown once, not saved</p>
+                <ul className="max-h-72 space-y-2 overflow-auto">
+                  {summary.outcomes.filter((o) => o.testLink).map((o) => (
+                    <li key={o.interactionId} className="space-y-1">
+                      <span className="text-xs font-medium">{o.customerName}</span>
+                      <TestSurveyLink url={o.testLink!} />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </Panel>
         )}
       </div>

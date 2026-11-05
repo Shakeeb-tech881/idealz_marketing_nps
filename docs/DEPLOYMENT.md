@@ -45,22 +45,47 @@ git push -u origin main
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | yes | Public anon key (RLS protects data) |
 | `SUPABASE_SERVICE_ROLE_KEY` | yes | **Server only.** Never expose to the browser |
 | `NEXT_PUBLIC_APP_URL` | yes | Base URL for survey links, no trailing slash |
-| `SMS_PROVIDER` | yes | `mock` (test) or `reachout` |
-| `REACHOUT_API_BASE_URL` / `REACHOUT_API_KEY` / `REACHOUT_API_SECRET` / `REACHOUT_SENDER_ID` | when `reachout` | From Reachout.lk; set only what their API requires |
+| `SMS_PROVIDER` | yes | `mock` (test) or `dialog_esms` |
+| `DIALOG_ESMS_USERNAME` / `DIALOG_ESMS_PASSWORD` | when `dialog_esms` | Your eSMS login. **Server only** |
+| `DIALOG_ESMS_SOURCE_ADDRESS` | when `dialog_esms` | Approved SMS mask, ≤ 11 characters (e.g. `iDealzLanka`) |
+| `DIALOG_ESMS_PAYMENT_METHOD` | no | `0` wallet (default) or `4` eSMS API package |
 | `CRON_SECRET` | yes (prod) | Random string; Vercel Cron sends it as a Bearer token |
-| `SMS_WEBHOOK_SECRET` | if DLR used | Shared secret for `/api/webhooks/sms?secret=…` |
+| `SMS_WEBHOOK_SECRET` | recommended | Enables delivery reports; random string (`openssl rand -hex 24`) |
 
-## 6. Reachout.lk integration
+## 6. Dialog eSMS integration
 
-Reachout.lk (a Hutch product) does not publish its API documentation publicly; it is provided to account holders. The adapter therefore ships **locked**:
+Implemented in `src/lib/messaging/dialog-esms.ts` from **eSMS API Document v3.2** (Adeona Technologies, 2026-07-01), section 3.1 "SMS via POST request":
 
-1. Obtain from Reachout.lk: API documentation, API key/credentials, and an approved **sender ID / SMS mask** (e.g. `iDealz`).
-2. In `src/lib/messaging/reachout.ts` complete `REACHOUT_SPEC.sendPath`, `buildRequest()` (auth header, payload field names, recipient number format) and `interpretResponse()` (success flag, message-ID field, error codes). Set `REACHOUT_SPEC.verified = true`.
-3. If Reachout supports delivery reports, implement `parseDeliveryReport()`, set `supportsDeliveryReports = true`, and register `https://feedback.idealzlanka.com/api/webhooks/sms?secret=<SMS_WEBHOOK_SECRET>` with Reachout.
-4. Add a unit test with a recorded sample response, then set `SMS_PROVIDER=reachout` in Vercel and redeploy.
-5. Send one invitation to an internal phone; check **Survey Messaging → Sending history** for the provider response.
+| Step | Endpoint | Notes |
+| --- | --- | --- |
+| Log in | `POST https://esms.dialog.lk/api/v2/user/login` | Token valid 12 h; cached per server instance and renewed on expiry (errors 100/105/106) |
+| Send | `POST https://e-sms.dialog.lk/api/v2/sms` | `msisdn: [{ mobile: "7XXXXXXXX" }]`, `sourceAddress` (mask), `message`, unique `transaction_id`, `payment_method` |
+| Delivery report | `GET /api/webhooks/sms?secret=…&campaignId=…&msisdn=…&status=1-4` | Only requested when `SMS_WEBHOOK_SECRET` is set. 3 = delivered, 2/4 = failed, 1 = submitted (informational) |
 
-Until then, `SMS_PROVIDER=mock` logs messages with a TEST badge (numbers ending `0000` simulate failures so retry can be tested).
+Behaviour worth knowing:
+
+- **Wrong password protection** — eSMS locks the account after 5 wrong passwords. After a credential error (115/116) the app stops trying to log in until the next deploy; Settings → SMS integration shows the reason.
+- **Blackout period** — eSMS rejects campaigns roughly **8 PM – 8 AM** (error 118). Those sends are marked failed with a clear message; use **Retry** in Sending history the next morning.
+- **Balance** — error 114 means the eSMS wallet needs a top-up; error 112 means the package is used up.
+- "Sent" means eSMS accepted and charged the campaign; "Delivered" is only shown after an eSMS delivery report.
+
+Go live:
+
+1. In Vercel set `DIALOG_ESMS_USERNAME`, `DIALOG_ESMS_PASSWORD`, `DIALOG_ESMS_SOURCE_ADDRESS`, `DIALOG_ESMS_PAYMENT_METHOD`, `SMS_WEBHOOK_SECRET`, then `SMS_PROVIDER=dialog_esms`, and redeploy.
+2. Settings → SMS integration should show **Ready to send: Yes**.
+3. Between 8 AM and 8 PM, send one invitation to an internal phone; check **Messaging → Sending history** for "Accepted by Dialog eSMS · campaign …" and, shortly after, **Delivered**.
+
+### One mask per showroom
+
+Each branch has an **SMS sender ID (mask)** field (Settings → Branches). A customer's survey SMS is sent from the mask of the showroom they visited; a branch with no mask uses `DIALOG_ESMS_SOURCE_ADDRESS`. The mask used is shown in Sending history.
+
+- Masks are **max 11 characters** and must be **approved by Dialog** first — an unapproved mask fails with error 108.
+- The three main showrooms (iDealz Prime, iDealz Marino, iSeven Mobiles) are created by the database setup with empty masks.
+- Templates can use `{{branch_name}}` (e.g. "thanks for visiting {{branch_name}}").
+- **Brand shown to customers** (Settings → Branches) changes the name in the SMS (`{{brand_name}}`), survey questions, page header and thank-you page. iSeven Mobiles is set to "iSeven Mobiles"; iDealz Prime and iDealz Marino use the company name. Use **Preview survey** next to each branch to check.
+- Existing databases: run `scripts/upgrade-showrooms.sql` once in the Supabase SQL editor.
+
+To return to test mode at any time set `SMS_PROVIDER=mock` and redeploy (numbers ending `0000` simulate failures so retry can be tested).
 
 **Consent:** only send to customers who have agreed to be contacted; use **Mark SMS opt-out** on the customer page when someone asks to stop. Opted-out customers are excluded from all sends.
 
@@ -73,5 +98,5 @@ Until then, `SMS_PROVIDER=mock` logs messages with a TEST badge (numbers ending 
 - [ ] Survey preview pages render on a phone
 - [ ] One end-to-end test: add customer → send (mock) → open link → submit → appears in Feedback and Dashboard → second submit is rejected
 - [ ] `CRON_SECRET` set; `/api/cron/maintenance` returns 401 without it
-- [ ] Reachout adapter verified before switching `SMS_PROVIDER=reachout`
+- [ ] One real SMS sent to an internal phone with `SMS_PROVIDER=dialog_esms` (between 8 AM and 8 PM) and shown as Delivered
 - [ ] Privacy notice and retention period agreed with management (Settings → Data retention)
