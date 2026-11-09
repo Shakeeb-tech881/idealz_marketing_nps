@@ -2,9 +2,14 @@ import { z } from "zod";
 import { normaliseMobile } from "@/lib/phone";
 import { CUSTOMER_SOURCES, GOOGLE_REVIEW_OPTIONS, SALES_STEPS } from "@/lib/types";
 
+// The browser form validates with these schemas and sends the *parsed* values
+// (blank fields already turned into null) to the server, which validates again.
+// So every optional field must accept null as well as "" — otherwise a blank
+// optional field (invoice, notes, email…) is rejected on the second check.
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
+const blank = z.union([z.literal(""), z.null()]);
 const optionalString = (max: number) =>
-  z.string().trim().max(max).optional().or(z.literal("")).transform((v) => (v ? v : null));
+  z.union([blank, z.string().trim().max(max)]).optional().transform((v) => (v ? v : null));
 
 export const customerContactSchema = z.object({
   full_name: z.string().trim().min(1, "Name is required").max(200),
@@ -21,11 +26,7 @@ export const customerContactSchema = z.object({
       return n;
     }),
   email: z
-    .string()
-    .trim()
-    .max(200)
-    .optional()
-    .or(z.literal(""))
+    .union([blank, z.string().trim().max(200)]).optional()
     .transform((v) => (v ? v.toLowerCase() : null))
     .refine((v) => v === null || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v), "Enter a valid email address"),
 });
@@ -41,11 +42,7 @@ const count = (max: number) =>
     z.number({ error: "Enter a number" }).int("Whole numbers only").min(0, "Cannot be negative").max(max, `At most ${max}`),
   );
 const clockTime = z
-  .string()
-  .trim()
-  .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Use HH:MM")
-  .optional()
-  .or(z.literal(""))
+  .union([blank, z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Use HH:MM")]).optional()
   .transform((v) => (v ? v.slice(0, 5) : null));
 /** Checkbox groups arrive as an array, a single string, or false when none is ticked. */
 const steps = z.preprocess(
@@ -56,10 +53,10 @@ const steps = z.preprocess(
 export const interactionSchema = z
   .object({
     branch_id: z.uuid("Select a branch"),
-    employee_id: z.uuid().optional().or(z.literal("")).transform((v) => (v ? v : null)),
+    employee_id: z.union([blank, z.uuid()]).optional().transform((v) => (v ? v : null)),
     purchase_status: z.enum(["purchased", "not_purchased"]),
     interaction_date: isoDate,
-    purchase_date: isoDate.optional().or(z.literal("")).transform((v) => (v ? v : null)),
+    purchase_date: z.union([blank, isoDate]).optional().transform((v) => (v ? v : null)),
     product_category: optionalString(80),
     product_model: optionalString(160),
     invoice_number: optionalString(60),
