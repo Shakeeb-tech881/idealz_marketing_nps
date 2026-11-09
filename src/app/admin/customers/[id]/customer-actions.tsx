@@ -103,7 +103,9 @@ export function SendSurveyButton({ interactionId, surveyType, disabled }: { inte
           const o = res.data.outcomes[0];
           if (o?.status === "sent") {
             toast.success(res.data.isTest ? "Test message logged (not sent – SMS test mode)" : "Survey SMS sent");
-            if (o.testLink) setTestLink(o.testLink);
+            // Refreshing swaps this button for "Resend", which would close the dialog —
+            // so in test mode the page refreshes only when the link dialog is closed.
+            if (o.testLink) return void setTestLink(o.testLink);
           } else toast.error(o?.reason ?? "Message was not sent");
           router.refresh();
         })
@@ -111,7 +113,13 @@ export function SendSurveyButton({ interactionId, surveyType, disabled }: { inte
     >
       {pending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <Send data-icon="inline-start" />} Send survey
     </Button>
-    <TestSurveyLinkDialog url={testLink} onClose={() => setTestLink(null)} />
+    <TestSurveyLinkDialog
+      url={testLink}
+      onClose={() => {
+        setTestLink(null);
+        router.refresh();
+      }}
+    />
     </>
   );
 }
@@ -132,14 +140,20 @@ export function ResendButton({ invitationId, failed }: { invitationId: string; f
           const res = await resendInvitationAction(invitationId, failed);
           if (!res.ok) return void toast.error(res.error);
           toast.success(res.data.isTest ? "Test message logged (not sent – SMS test mode)" : "Survey SMS sent");
-          if (res.data.testLink) setTestLink(res.data.testLink);
+          if (res.data.testLink) return void setTestLink(res.data.testLink);
           router.refresh();
         })
       }
     >
       {pending ? <Loader2 className="animate-spin" data-icon="inline-start" /> : <RotateCw data-icon="inline-start" />} {failed ? "Retry" : "Resend"}
     </Button>
-    <TestSurveyLinkDialog url={testLink} onClose={() => setTestLink(null)} />
+    <TestSurveyLinkDialog
+      url={testLink}
+      onClose={() => {
+        setTestLink(null);
+        router.refresh();
+      }}
+    />
     </>
   );
 }
