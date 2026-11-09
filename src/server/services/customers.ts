@@ -21,10 +21,12 @@ export async function insertInteraction(
   actor: Profile,
   customerId: string,
   i: z.output<typeof interactionSchema>,
+  /** Bulk imports carry no rep KPI data, so they are left out of the scorecard. */
+  opts: { kpiTracked?: boolean } = {},
 ) {
   return supabase
     .from("customer_interactions")
-    .insert({ ...i, customer_id: customerId, created_by: actor.id })
+    .insert({ ...i, customer_id: customerId, created_by: actor.id, kpi_tracked: opts.kpiTracked ?? true })
     .select("id")
     .single();
 }

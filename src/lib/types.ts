@@ -96,6 +96,26 @@ export const PRODUCT_CATEGORIES = [
   "Other",
 ] as const;
 
+/** Sales steps a rep can tick for each visit (rep scorecard). Order = display order. */
+export const SALES_STEPS = [
+  { value: "greeted", label: "Greeted the customer" },
+  { value: "needs_identified", label: "Asked about needs & budget" },
+  { value: "demo_given", label: "Gave a product demo" },
+  { value: "trade_in_offered", label: "Offered trade-in / exchange" },
+  { value: "accessories_offered", label: "Offered accessories" },
+  { value: "warranty_explained", label: "Explained warranty / care plan" },
+  { value: "payment_options_explained", label: "Explained payment / instalment options" },
+  { value: "follow_up_arranged", label: "Arranged a follow-up" },
+] as const;
+export type SalesStep = (typeof SALES_STEPS)[number]["value"];
+
+export const GOOGLE_REVIEW_OPTIONS = [
+  { value: "not_asked", label: "Not asked" },
+  { value: "asked", label: "Asked for a review" },
+  { value: "confirmed", label: "Customer left a review" },
+] as const;
+export type GoogleReviewStatus = (typeof GOOGLE_REVIEW_OPTIONS)[number]["value"];
+
 /** Standard result shape for server actions. */
 export type ActionResult<T = undefined> =
   | ({ ok: true; message?: string } & (T extends undefined ? object : { data: T }))

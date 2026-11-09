@@ -18,5 +18,5 @@ test("setup_all_in_one.sql applies in one run", async () => {
     "select (select count(*)::int from public.survey_templates) n, (select count(*)::int from pg_proc where proname like 'analytics_%') fns",
   );
   expect(r.rows[0].n).toBe(2);
-  expect(r.rows[0].fns).toBe(10);
+  expect(r.rows[0].fns).toBe(11);
 });

@@ -165,7 +165,7 @@ export function AddInteractionDialog(props: { customerId: string; branches: Bran
       <DialogTrigger render={<Button size="sm" />}>
         <Plus data-icon="inline-start" /> New purchase / visit
       </DialogTrigger>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>New purchase or visit</DialogTitle>
           <DialogDescription>Record another interaction for this customer.</DialogDescription>

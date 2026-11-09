@@ -6,7 +6,7 @@ import { canSeeContactDetails, requirePageRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatDate, formatDateTime, todayColombo } from "@/lib/format";
 import { formatMobile, maskMobile } from "@/lib/phone";
-import { PURCHASE_STATUS_LABELS, SOURCE_LABELS, type CustomerSource, type InvitationStatus, type PurchaseStatus } from "@/lib/types";
+import { GOOGLE_REVIEW_OPTIONS, PURCHASE_STATUS_LABELS, SALES_STEPS, SOURCE_LABELS, type CustomerSource, type InvitationStatus, type PurchaseStatus } from "@/lib/types";
 import { getLookups } from "@/server/services/lookups";
 import { PageHeader } from "@/components/admin/page-header";
 import { Panel } from "@/components/admin/panel";
@@ -26,6 +26,16 @@ interface Interaction {
   invoice_number: string | null;
   source: CustomerSource;
   notes: string | null;
+  android_phones: number;
+  apple_phones: number;
+  other_devices: number;
+  commission_accessories: number;
+  non_commission_accessories: number;
+  visit_start: string | null;
+  visit_end: string | null;
+  sales_steps: string[];
+  google_review: string;
+  kpi_tracked: boolean;
   branches: { name: string } | null;
   employees: { full_name: string } | null;
   survey_invitations: {
@@ -43,6 +53,26 @@ interface Interaction {
   }[];
 }
 
+const REVIEW_LABELS = Object.fromEntries(GOOGLE_REVIEW_OPTIONS.map((o) => [o.value, o.label]));
+
+/** One line for the rep scorecard data recorded on a visit. */
+function salesSummary(r: Interaction) {
+  const sold = [
+    r.android_phones && `${r.android_phones} Android`,
+    r.apple_phones && `${r.apple_phones} Apple`,
+    r.other_devices && `${r.other_devices} other device${r.other_devices === 1 ? "" : "s"}`,
+    r.commission_accessories && `${r.commission_accessories} commission acc.`,
+    r.non_commission_accessories && `${r.non_commission_accessories} non-comm. acc.`,
+  ].filter(Boolean);
+  const parts = [
+    sold.length ? `Sold: ${sold.join(", ")}` : null,
+    r.visit_start && r.visit_end ? `${r.visit_start.slice(0, 5)}–${r.visit_end.slice(0, 5)}` : r.visit_start ? `From ${r.visit_start.slice(0, 5)}` : null,
+    `${r.sales_steps.length}/${SALES_STEPS.length} sales steps`,
+    `Google review: ${REVIEW_LABELS[r.google_review] ?? r.google_review}`,
+  ];
+  return parts.filter(Boolean).join(" · ");
+}
+
 export default async function CustomerPage({ params }: PageProps<"/admin/customers/[id]">) {
   const profile = await requirePageRole();
   const { id } = await params;
@@ -53,7 +83,7 @@ export default async function CustomerPage({ params }: PageProps<"/admin/custome
     supabase
       .from("customer_interactions")
       .select(
-        "id, interaction_date, purchase_status, purchase_date, product_category, product_model, invoice_number, source, notes, branches(name), employees(full_name), survey_invitations(id, status, survey_type, created_at, sent_at, opened_at, completed_at, expires_at, send_count, last_error, survey_responses(id, nps_score, nps_category, additional_feedback))",
+        "id, interaction_date, purchase_status, purchase_date, product_category, product_model, invoice_number, source, notes, android_phones, apple_phones, other_devices, commission_accessories, non_commission_accessories, visit_start, visit_end, sales_steps, google_review, kpi_tracked, branches(name), employees(full_name), survey_invitations(id, status, survey_type, created_at, sent_at, opened_at, completed_at, expires_at, send_count, last_error, survey_responses(id, nps_score, nps_category, additional_feedback))",
       )
       .eq("customer_id", id)
       .order("interaction_date", { ascending: false }),
@@ -126,6 +156,7 @@ export default async function CustomerPage({ params }: PageProps<"/admin/custome
                           {r.employees && ` · Served by ${r.employees.full_name}`}
                           {` · ${SOURCE_LABELS[r.source] ?? r.source}`}
                         </p>
+                        {r.kpi_tracked && <p className="mt-0.5 text-xs text-muted-foreground">{salesSummary(r)}</p>}
                         {r.notes && <p className="mt-1 text-xs text-muted-foreground italic">{r.notes}</p>}
                       </div>
                       <div className="flex shrink-0 items-center gap-2">

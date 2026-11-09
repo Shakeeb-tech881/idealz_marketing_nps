@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { normaliseMobile } from "@/lib/phone";
-import { CUSTOMER_SOURCES } from "@/lib/types";
+import { CUSTOMER_SOURCES, GOOGLE_REVIEW_OPTIONS, SALES_STEPS } from "@/lib/types";
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD");
 const optionalString = (max: number) =>
@@ -31,6 +31,27 @@ export const customerContactSchema = z.object({
 });
 
 const sourceValues = CUSTOMER_SOURCES.map((s) => s.value) as [string, ...string[]];
+const stepValues = SALES_STEPS.map((s) => s.value) as [string, ...string[]];
+const reviewValues = GOOGLE_REVIEW_OPTIONS.map((s) => s.value) as [string, ...string[]];
+
+/** A whole-number count from a form field: blank means 0. */
+const count = (max: number) =>
+  z.preprocess(
+    (v) => (v === "" || v === null || v === undefined || (typeof v === "number" && Number.isNaN(v)) ? 0 : Number(v)),
+    z.number({ error: "Enter a number" }).int("Whole numbers only").min(0, "Cannot be negative").max(max, `At most ${max}`),
+  );
+const clockTime = z
+  .string()
+  .trim()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Use HH:MM")
+  .optional()
+  .or(z.literal(""))
+  .transform((v) => (v ? v.slice(0, 5) : null));
+/** Checkbox groups arrive as an array, a single string, or false when none is ticked. */
+const steps = z.preprocess(
+  (v) => (Array.isArray(v) ? v : typeof v === "string" && v ? [v] : []),
+  z.array(z.enum(stepValues)).max(stepValues.length),
+);
 
 export const interactionSchema = z
   .object({
@@ -44,12 +65,38 @@ export const interactionSchema = z
     invoice_number: optionalString(60),
     source: z.enum(sourceValues).default("walk_in"),
     notes: optionalString(1000),
+    // Rep scorecard
+    android_phones: count(50).default(0),
+    apple_phones: count(50).default(0),
+    other_devices: count(50).default(0),
+    commission_accessories: count(200).default(0),
+    non_commission_accessories: count(200).default(0),
+    visit_start: clockTime,
+    visit_end: clockTime,
+    sales_steps: steps.default([]),
+    google_review: z.enum(reviewValues).default("not_asked"),
   })
-  .transform((v) =>
-    v.purchase_status === "purchased"
-      ? { ...v, purchase_date: v.purchase_date ?? v.interaction_date }
-      : { ...v, purchase_date: null, invoice_number: null },
-  );
+  .superRefine((v, ctx) => {
+    if (v.visit_start && v.visit_end && v.visit_end <= v.visit_start) {
+      ctx.addIssue({ code: "custom", path: ["visit_end"], message: "End time must be after the start time" });
+    }
+  })
+  .transform((v) => {
+    const sales_steps = [...new Set(v.sales_steps)];
+    return v.purchase_status === "purchased"
+      ? { ...v, sales_steps, purchase_date: v.purchase_date ?? v.interaction_date }
+      : {
+          ...v,
+          sales_steps,
+          purchase_date: null,
+          invoice_number: null,
+          android_phones: 0,
+          apple_phones: 0,
+          other_devices: 0,
+          commission_accessories: 0,
+          non_commission_accessories: 0,
+        };
+  });
 
 export const newCustomerSchema = customerContactSchema.and(interactionSchema);
 

@@ -277,3 +277,70 @@ describe("showroom SMS masks", () => {
     expect(col.n).toBe(1);
   });
 });
+
+describe("sales rep scorecard", () => {
+  test("visits recorded before the upgrade are not tracked; new ones are", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const old = await createTestDb({ before: "20261109000009" });
+    const b = (await old.query<{ id: string }>(`insert into branches (name, code) values ('Old', 'OLD') returning id`)).rows[0].id;
+    const c = (await old.query<{ id: string }>(`insert into customers (full_name, mobile) values ('Old', '+94770000900') returning id`)).rows[0].id;
+    await old.query(`insert into customer_interactions (customer_id, branch_id, purchase_status) values ($1, $2, 'not_purchased')`, [c, b]);
+    await old.exec(readFileSync(join(__dirname, "../../scripts/upgrade-rep-scorecard.sql"), "utf8"));
+    await old.query(`insert into customer_interactions (customer_id, branch_id, purchase_status) values ($1, $2, 'not_purchased')`, [c, b]);
+    const rows = await old.query<{ kpi_tracked: boolean; google_review: string; sales_steps: string[] }>(
+      `select kpi_tracked, google_review, sales_steps from customer_interactions order by created_at, kpi_tracked`);
+    expect(rows.rows).toEqual([
+      { kpi_tracked: false, google_review: "not_asked", sales_steps: [] },
+      { kpi_tracked: true, google_review: "not_asked", sales_steps: [] },
+    ]);
+    await old.close();
+  });
+
+  test("bad KPI values are rejected", async () => {
+    const c = await one<{ id: string }>(`insert into customers (full_name, mobile) values ('KPI', '+94770000901') returning id`);
+    const ins = (cols: string, vals: string) =>
+      db.query(`insert into customer_interactions (customer_id, branch_id, purchase_status, ${cols}) values ($1, $2, ${vals})`, [c.id, branchA]);
+    await expect(ins("apple_phones", "'not_purchased', 1")).rejects.toThrow(/interactions_sales_need_purchase/);
+    await expect(ins("apple_phones", "'purchased', -1")).rejects.toThrow(/interactions_sales_counts/);
+    await expect(ins("visit_start, visit_end", "'not_purchased', '11:00', '10:00'")).rejects.toThrow(/interactions_visit_time/);
+    await expect(ins("sales_steps", "'not_purchased', array['bribed']")).rejects.toThrow(/interactions_sales_steps/);
+    await expect(ins("google_review", "'not_purchased', 'maybe'")).rejects.toThrow(/interactions_google_review/);
+  });
+
+  test("analytics_rep_kpis totals tracked visits per rep, scoped by RLS", async () => {
+    const c = await one<{ id: string }>(`insert into customers (full_name, mobile) values ('KPI buyer', '+94770000902') returning id`);
+    const empK = (await one<{ id: string }>(`insert into employees (branch_id, full_name) values ($1, 'Rep K') returning id`, [branchA])).id;
+    // First visit 3 days ago (no purchase), then a purchase today: conversion = 3 days, 30 minutes.
+    await db.query(
+      `insert into customer_interactions (customer_id, branch_id, employee_id, purchase_status, interaction_date, sales_steps, google_review)
+       values ($1, $2, $3, 'not_purchased', current_date - 3, array['greeted','demo_given'], 'asked')`, [c.id, branchA, empK]);
+    await db.query(
+      `insert into customer_interactions (customer_id, branch_id, employee_id, purchase_status, purchase_date, android_phones, apple_phones,
+         commission_accessories, non_commission_accessories, visit_start, visit_end, sales_steps, google_review)
+       values ($1, $2, $3, 'purchased', current_date, 1, 2, 3, 1, '10:00', '10:30', array['greeted','needs_identified','demo_given','accessories_offered'], 'confirmed')`,
+      [c.id, branchA, empK]);
+    const fetch = (user: string) => as(db, "authenticated", user, async (q) =>
+      (await q<Record<string, unknown>>(`select * from public.analytics_rep_kpis(current_date - 30, current_date, null) where employee_id = $1`, [empK])).rows[0]);
+    const r = await fetch(U.bmA);
+    expect(r).toMatchObject({
+      visits: 2, sales: 1, android_phones: 1, apple_phones: 2, commission_accessories: 3, non_commission_accessories: 1,
+      timed_visits: 1, measured_conversions: 1, reviews_asked: 2, reviews_confirmed: 1,
+    });
+    expect(Number(r.avg_visit_minutes)).toBe(30);
+    expect(Number(r.avg_conversion_days)).toBe(3);
+    expect(Number(r.avg_sales_steps)).toBe(3);
+    // Another showroom's manager sees none of these visits.
+    expect(Number((await fetch(U.bmB))?.visits ?? 0)).toBe(0);
+    await expect(as(db, "anon", null, (q) => q(`select * from public.analytics_rep_kpis()`))).rejects.toThrow(/permission denied/);
+  });
+
+  test("the upgrade script can be run again safely", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const before = await one<{ n: number }>(`select count(*)::int n from customer_interactions where kpi_tracked`);
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-rep-scorecard.sql"), "utf8"));
+    const after = await one<{ n: number }>(`select count(*)::int n from customer_interactions where kpi_tracked`);
+    expect(after.n).toBe(before.n);
+  });
+});

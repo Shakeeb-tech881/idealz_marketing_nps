@@ -43,6 +43,7 @@ tests/db/              database tests: migrations + RLS + submission run in PGli
 - Every table has Row Level Security. Branch managers and staff are scoped in the database, so analytics functions (security invoker) automatically aggregate only what the user may see.
 - SMS status is never overstated: “Sent” = accepted by the provider; “Delivered” only from a provider delivery report; “Opened” only when the survey page loads.
 - Employees are only ranked with at least the configured minimum sample; others are listed as “insufficient sample”.
+- **Rep Scorecard** (`/admin/scorecard`) grades each salesperson A+ to Fail from device sales, accessories (commission ×1.5), conversion rate, Google reviews, sales steps and customer feedback. No targets: each rep is compared with the showroom average (average = 75). Reps with fewer than 10 tracked visits are flagged red as **Low activity** (not graded) for follow-up. Download as PDF from the page, or as PDF/Excel/CSV from Reports → Sales Rep Scorecard. Logic in `src/lib/kpi.ts`.
 
 ## SMS provider (Dialog eSMS)
 

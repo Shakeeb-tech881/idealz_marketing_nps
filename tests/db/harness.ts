@@ -5,9 +5,10 @@ import { join } from "node:path";
 /**
  * Boots an in-process Postgres (PGlite), emulates the parts of Supabase the
  * migrations depend on (auth schema, auth.uid(), API roles, default grants)
- * and applies every migration in supabase/migrations.
+ * and applies every migration in supabase/migrations (or only those that sort
+ * before `opts.before`, to test an upgrade).
  */
-export async function createTestDb() {
+export async function createTestDb(opts: { before?: string } = {}) {
   const db = new PGlite();
   await db.exec(`
     create role anon nologin;
@@ -28,7 +29,8 @@ export async function createTestDb() {
     alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
   `);
   const dir = join(__dirname, "../../supabase/migrations");
-  for (const f of readdirSync(dir).filter((f) => f.endsWith(".sql")).sort()) {
+  const files = readdirSync(dir).filter((f) => f.endsWith(".sql") && (!opts.before || f < opts.before)).sort();
+  for (const f of files) {
     try {
       await db.exec(readFileSync(join(dir, f), "utf8"));
     } catch (e) {

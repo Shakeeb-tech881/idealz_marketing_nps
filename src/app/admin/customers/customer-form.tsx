@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { Clock, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { z } from "zod";
 import { Button } from "@/components/ui/button";
@@ -13,11 +13,90 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { FormField } from "@/components/admin/form-field";
 import { Panel } from "@/components/admin/panel";
 import { interactionSchema, newCustomerSchema } from "@/lib/validation/customer";
-import { CUSTOMER_SOURCES, PRODUCT_CATEGORIES, type Branch, type Employee } from "@/lib/types";
+import { CUSTOMER_SOURCES, GOOGLE_REVIEW_OPTIONS, PRODUCT_CATEGORIES, SALES_STEPS, type Branch, type Employee } from "@/lib/types";
 import { addInteractionAction, createCustomerAction } from "./actions";
 
 type FormIn = z.input<typeof newCustomerSchema>;
 type FormOut = z.output<typeof newCustomerSchema>;
+
+/** Current time in Sri Lanka as HH:MM, for the "Now" buttons. */
+function nowColombo() {
+  return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Colombo", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(new Date());
+}
+
+const SALES_COUNTS = [
+  { name: "android_phones", label: "Android phones" },
+  { name: "apple_phones", label: "Apple iPhones" },
+  { name: "other_devices", label: "Other devices", hint: "Tablets, laptops, watches…" },
+  { name: "commission_accessories", label: "Commission accessories" },
+  { name: "non_commission_accessories", label: "Non-commission accessories" },
+] as const;
+
+/** Rep scorecard fields: what was sold, time with the customer, sales steps, Google review. */
+function SalesFields({
+  register,
+  errors,
+  status,
+  setValue,
+}: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  register: any;
+  errors: Record<string, { message?: string } | undefined>;
+  status: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  setValue: (name: any, value: string, opts?: { shouldValidate?: boolean; shouldDirty?: boolean }) => void;
+}) {
+  const timeField = (name: "visit_start" | "visit_end", label: string) => (
+    <FormField label={label} htmlFor={name} error={errors[name]?.message}>
+      <div className="flex gap-2">
+        <Input id={name} type="time" step={60} {...register(name)} />
+        <Button type="button" variant="outline" size="sm" className="h-9 shrink-0" onClick={() => setValue(name, nowColombo(), { shouldValidate: true, shouldDirty: true })}>
+          <Clock data-icon="inline-start" /> Now
+        </Button>
+      </div>
+    </FormField>
+  );
+  return (
+    <div className="mt-6 space-y-4 border-t border-border pt-5">
+      <div>
+        <p className="text-sm font-medium">Sales rep scorecard</p>
+        <p className="text-xs text-muted-foreground">Used to grade the salesperson. Leave counts at 0 if nothing was sold.</p>
+      </div>
+      {status === "purchased" && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+          {SALES_COUNTS.map((f) => (
+            <FormField key={f.name} label={f.label} htmlFor={f.name} error={errors[f.name]?.message} hint={"hint" in f ? f.hint : undefined}>
+              <Input id={f.name} type="number" inputMode="numeric" min={0} step={1} {...register(f.name)} />
+            </FormField>
+          ))}
+        </div>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2">
+        {timeField("visit_start", "Time customer was first served")}
+        {timeField("visit_end", status === "purchased" ? "Time the sale closed" : "Time the customer left")}
+      </div>
+      <fieldset>
+        <legend className="mb-2 text-sm font-medium">What the rep did</legend>
+        <div className="grid gap-x-4 gap-y-2 sm:grid-cols-2">
+          {SALES_STEPS.map((s) => (
+            <label key={s.value} className="flex items-center gap-2 text-sm">
+              <input type="checkbox" value={s.value} className="size-4 rounded border-input accent-primary" {...register("sales_steps")} />
+              {s.label}
+            </label>
+          ))}
+        </div>
+        {errors.sales_steps?.message && <p className="mt-1 text-xs text-destructive">{errors.sales_steps.message}</p>}
+      </fieldset>
+      <FormField label="Google review" htmlFor="google_review" error={errors.google_review?.message} hint="Ask every customer, happy or not. Google does not allow asking only happy customers or offering rewards for reviews." className="sm:max-w-sm">
+        <NativeSelect id="google_review" {...register("google_review")}>
+          {GOOGLE_REVIEW_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </NativeSelect>
+      </FormField>
+    </div>
+  );
+}
 
 function InteractionFields({
   register,
@@ -102,7 +181,7 @@ export function NewCustomerForm({ branches, employees, defaultBranch, today }: {
   const router = useRouter();
   const form = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(newCustomerSchema),
-    defaultValues: { full_name: "", mobile: "", email: "", branch_id: defaultBranch ?? "", employee_id: "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "" },
+    defaultValues: { full_name: "", mobile: "", email: "", branch_id: defaultBranch ?? "", employee_id: "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
   });
   const branchId = useWatch({ control: form.control, name: "branch_id" }) as string;
   const status = useWatch({ control: form.control, name: "purchase_status" }) as string;
@@ -136,6 +215,7 @@ export function NewCustomerForm({ branches, employees, defaultBranch, today }: {
       </Panel>
       <Panel title="Purchase / visit" description="Each interaction can receive its own survey invitation.">
         <InteractionFields register={form.register} errors={errors} branches={branches} employees={employees} branchId={branchId} status={status} />
+        <SalesFields register={form.register} errors={errors} status={status} setValue={form.setValue} />
         <div className="mt-6 flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
           <Button type="submit" disabled={form.formState.isSubmitting}>
@@ -154,7 +234,7 @@ export function AddInteractionForm({ customerId, branches, employees, defaultBra
   const router = useRouter();
   const form = useForm<IIn, unknown, IOut>({
     resolver: zodResolver(interactionSchema),
-    defaultValues: { branch_id: defaultBranch ?? "", employee_id: "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "" },
+    defaultValues: { branch_id: defaultBranch ?? "", employee_id: "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
   });
   const branchId = useWatch({ control: form.control, name: "branch_id" }) as string;
   const status = useWatch({ control: form.control, name: "purchase_status" }) as string;
@@ -175,6 +255,7 @@ export function AddInteractionForm({ customerId, branches, employees, defaultBra
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
       <InteractionFields register={form.register} errors={errors} branches={branches} employees={employees} branchId={branchId} status={status} />
+      <SalesFields register={form.register} errors={errors} status={status} setValue={form.setValue} />
       <div className="mt-6 flex justify-end gap-2">
         <Button type="submit" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting && <Loader2 className="animate-spin" data-icon="inline-start" />} Add interaction

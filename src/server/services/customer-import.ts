@@ -177,7 +177,7 @@ export async function commitImport(actor: Profile, rows: MappedRow[]) {
       p.result.messages.push(friendlyDbError(cErr ?? { message: "Customer could not be created" }));
       continue;
     }
-    const { error } = await insertInteraction(supabase, actor, customerId as string, p.interaction);
+    const { error } = await insertInteraction(supabase, actor, customerId as string, p.interaction, { kpiTracked: false });
     if (error) {
       p.result.status = error.code === "23505" ? "duplicate" : "error";
       p.result.messages.push(friendlyDbError(error));

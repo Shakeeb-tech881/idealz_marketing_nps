@@ -89,6 +89,13 @@ To return to test mode at any time set `SMS_PROVIDER=mock` and redeploy (numbers
 
 **Consent:** only send to customers who have agreed to be contacted; use **Mark SMS opt-out** on the customer page when someone asks to stop. Opted-out customers are excluded from all sends.
 
+### Upgrading an existing database
+
+Run each script once in Supabase → SQL Editor (both are safe to re-run):
+
+- `scripts/upgrade-showrooms.sql`: showroom SMS masks and brands (5 Nov 2026)
+- `scripts/upgrade-rep-scorecard.sql`: sales rep scorecard fields (9 Nov 2026). Visits recorded before it are not counted in the scorecard.
+
 ## 7. Production checklist
 
 - [ ] All migrations applied; `select count(*) from survey_templates` returns 2

@@ -32,7 +32,10 @@ export async function renderXlsx(r: ReportData, company: string): Promise<Buffer
   header.eachCell((cell) => {
     cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF0F2747" } };
   });
-  for (const row of r.rows) ws.addRow(r.columns.map((c) => safeCell(row[c.key] ?? null)));
+  r.rows.forEach((row, i) => {
+    const added = ws.addRow(r.columns.map((c) => safeCell(row[c.key] ?? null)));
+    if (r.rowTone?.[i] === "danger") added.font = { bold: true, color: { argb: "FFA52727" } };
+  });
   r.columns.forEach((c, i) => (ws.getColumn(i + 1).width = c.width ?? Math.max(12, c.label.length + 2)));
   ws.views = [{ state: "frozen", ySplit: 5 }];
   if (r.notes?.length) {
@@ -61,6 +64,12 @@ export function renderPdf(r: ReportData, company: string): Buffer {
     headStyles: { fillColor: [15, 39, 71], textColor: 255 },
     alternateRowStyles: { fillColor: [246, 247, 249] },
     margin: { left: 36, right: 36 },
+    didParseCell: (data) => {
+      if (data.section === "body" && r.rowTone?.[data.row.index] === "danger") {
+        data.cell.styles.textColor = [165, 39, 39];
+        data.cell.styles.fontStyle = "bold";
+      }
+    },
   });
   if (r.notes?.length) {
     const y = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 100;

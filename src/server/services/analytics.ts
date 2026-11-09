@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeNps, npsFromTotals, pct, type NpsResult } from "@/lib/nps";
 import { rpcArgs, type AnalyticsFilters } from "@/lib/analytics/filters";
 import { countThemes } from "@/lib/analytics/themes";
+import { scoreReps, type RepKpiTotals, type RepScore } from "@/lib/kpi";
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -296,4 +297,45 @@ export async function getComplaintThemesByBranch(sb: SupabaseClient, f: Analytic
     byBranch.set(r.branch_id, list);
   }
   return new Map([...byBranch.entries()].map(([k, rows]) => [k, { comments: rows.length, themes: countThemes(rows).slice(0, 3) }]));
+}
+
+/**
+ * Sales rep scorecard: KPI totals from tracked visits plus survey feedback for
+ * the same period and showroom, scored and graded by src/lib/kpi.ts.
+ */
+export async function getRepScorecard(sb: SupabaseClient, f: AnalyticsFilters, minFeedbackSample: number): Promise<RepScore[]> {
+  const [kpiRes, feedback] = await Promise.all([
+    sb.rpc("analytics_rep_kpis", { p_from: f.from, p_to: f.to, p_branch: f.branch }),
+    getEmployeePerformance(sb, { ...f, employee: null, surveyType: null, category: null }, minFeedbackSample),
+  ]);
+  const rows = unwrap(kpiRes, "rep kpis") as Record<string, unknown>[];
+  const fb = new Map(feedback.map((e) => [e.employeeId, e]));
+  const totals: RepKpiTotals[] = rows.map((r) => {
+    const e = fb.get(String(r.employee_id));
+    return {
+      employeeId: String(r.employee_id),
+      name: String(r.employee_name),
+      branchId: String(r.branch_id),
+      branchName: String(r.branch_name),
+      isActive: Boolean(r.is_active),
+      visits: n(r.visits),
+      sales: n(r.sales),
+      androidPhones: n(r.android_phones),
+      applePhones: n(r.apple_phones),
+      otherDevices: n(r.other_devices),
+      commissionAccessories: n(r.commission_accessories),
+      nonCommissionAccessories: n(r.non_commission_accessories),
+      timedVisits: n(r.timed_visits),
+      avgVisitMinutes: num(r.avg_visit_minutes),
+      measuredConversions: n(r.measured_conversions),
+      avgConversionDays: num(r.avg_conversion_days),
+      avgSalesSteps: num(r.avg_sales_steps),
+      reviewsAsked: n(r.reviews_asked),
+      reviewsConfirmed: n(r.reviews_confirmed),
+      feedbackResponses: e?.nps.total ?? 0,
+      avgStaffRating: e?.avgStaffRating ?? null,
+      nps: e?.nps.nps ?? null,
+    };
+  });
+  return scoreReps(totals, { minFeedbackSample });
 }

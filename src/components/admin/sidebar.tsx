@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Award,
   ChartNoAxesCombined,
   FileDown,
   LayoutDashboard,
@@ -23,6 +24,7 @@ import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/s
 import type { NavItem } from "./nav-config";
 
 const ICONS: Record<string, LucideIcon> = {
+  Award,
   LayoutDashboard,
   MessageSquareText,
   Users,

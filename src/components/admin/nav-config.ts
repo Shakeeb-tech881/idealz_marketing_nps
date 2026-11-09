@@ -31,6 +31,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: "/admin/analytics", label: "NPS & Insights", icon: "ChartNoAxesCombined", roles: MANAGERS },
       { href: "/admin/branches", label: "Branch Analytics", icon: "Store", roles: MANAGERS },
       { href: "/admin/employees", label: "Employee Analytics", icon: "UserRoundCheck", roles: MANAGERS },
+      { href: "/admin/scorecard", label: "Rep Scorecard", icon: "Award", roles: MANAGERS },
       { href: "/admin/reports", label: "Reports", icon: "FileDown", roles: MANAGERS },
     ],
   },
