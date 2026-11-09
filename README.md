@@ -45,7 +45,8 @@ tests/db/              database tests: migrations + RLS + submission run in PGli
 - Employees are only ranked with at least the configured minimum sample; others are listed as “insufficient sample”.
 - **Rep Scorecard** (`/admin/scorecard`) grades each salesperson A+ to Fail from device sales, accessories (commission ×1.5), conversion rate, Google reviews, sales steps and customer feedback. No targets: each rep is compared with the showroom average (average = 75). Reps with fewer than 10 tracked visits are flagged red as **Low activity** (not graded) for follow-up. Download as PDF from the page, or as PDF/Excel/CSV from Reports → Sales Rep Scorecard. Logic in `src/lib/kpi.ts`.
 
-## SMS provider (Dialog eSMS)
+## SMS provider (Dialog eSMS) - Non Promotional Plane
+
 
 SMS are sent through **Dialog eSMS** (`src/lib/messaging/dialog-esms.ts`, built from the official eSMS API document v3.2). With `SMS_PROVIDER=mock` (the default) the app logs every message with a **TEST** badge, never sends, and shows the survey link to the sender so the survey can be tested end to end. See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#6-dialog-esms-integration) to go live.
 
