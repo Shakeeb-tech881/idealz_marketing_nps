@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { feedbackScore, gradeFor, repStatusText, KPI_WEIGHTS, relativeScore, scoreReps, weightedScore, type RepKpiTotals } from "@/lib/kpi";
-import { interactionSchema } from "@/lib/validation/customer";
+import { interactionSchema, newCustomerSchema } from "@/lib/validation/customer";
 
 const rep = (over: Partial<RepKpiTotals>): RepKpiTotals => ({
   employeeId: over.name ?? "x", name: "x", branchId: "b1", branchName: "Prime", isActive: true,
@@ -93,5 +93,34 @@ describe("rep status", () => {
     const [r] = scoreReps([rep({ name: "Solo", feedbackResponses: 0, androidPhones: 0, applePhones: 0, otherDevices: 0, commissionAccessories: 0, nonCommissionAccessories: 0, reviewsAsked: 0, reviewsConfirmed: 0, avgSalesSteps: null })], { minFeedbackSample: 10 });
     expect(r.status).toBe("insufficient_data");
     expect(repStatusText(r)).toBe("Not graded: not enough measurable KPIs yet");
+  });
+});
+
+describe("customer form: browser check, then server check", () => {
+  // Exactly what the Add customer form holds when only the required fields are filled.
+  const blankForm = {
+    full_name: "Nimal Perera", mobile: "077 123 4567", email: "", branch_id: "6f1c2a8e-1d2b-4c3d-9e4f-5a6b7c8d9e0f", employee_id: "",
+    purchase_status: "purchased", interaction_date: "2026-11-09", purchase_date: "", product_category: "", product_model: "",
+    invoice_number: "", source: "walk_in", notes: "",
+    android_phones: "0", apple_phones: "", other_devices: 0, commission_accessories: 0, non_commission_accessories: 0,
+    visit_start: "", visit_end: "", sales_steps: false, google_review: "not_asked",
+  };
+
+  test.each([
+    ["purchase, all optional fields blank", blankForm],
+    ["visit without purchase, all optional fields blank", { ...blankForm, purchase_status: "not_purchased" }],
+    ["everything filled", { ...blankForm, email: "A@B.LK", invoice_number: "INV-1", notes: "Paid cash", visit_start: "10:00", visit_end: "10:20", sales_steps: ["greeted"] }],
+  ])("%s: saves, and the server accepts what the browser sends", (_label, form) => {
+    const browser = newCustomerSchema.safeParse(form);
+    expect(browser.success).toBe(true);
+    const server = newCustomerSchema.safeParse(browser.data);
+    expect(server.success, JSON.stringify(server.error?.issues)).toBe(true);
+    expect(server.data).toEqual(browser.data);
+    const visitOnly = interactionSchema.safeParse(interactionSchema.parse(form));
+    expect(visitOnly.success, JSON.stringify(visitOnly.error?.issues)).toBe(true);
+  });
+
+  test("blank optional fields are saved as empty", () => {
+    expect(newCustomerSchema.parse(blankForm)).toMatchObject({ email: null, invoice_number: null, notes: null, employee_id: null, product_model: null, visit_start: null });
   });
 });

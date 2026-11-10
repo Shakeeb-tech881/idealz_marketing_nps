@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import { DialogEsmsSmsProvider, __resetDialogEsmsState, newTransactionId, toEsmsMobile } from "@/lib/messaging/dialog-esms";
+import { DialogEsmsSmsProvider, __resetDialogEsmsState, newTransactionId, toEsmsMobile, type LoginBlock, type LoginBlockStore } from "@/lib/messaging/dialog-esms";
 
 /**
  * A fake eSMS server that behaves as described in "eSMS API Document v3.2"
@@ -132,6 +132,61 @@ describe("Dialog eSMS adapter (eSMS API v3.2)", () => {
     expect(loginCalls()).toHaveLength(1);
     expect(smsCalls()).toHaveLength(0);
     expect(p.configurationProblems().join(" ")).toMatch(/redeploy/);
+  });
+
+  test("a rejected login is shared: a second server instance never retries the same password", async () => {
+    script.login = () => ({ status: "failed", comment: "Invalid credentials", token: null, remainingCount: 3, expiration: null, errCode: 115 });
+    let saved: LoginBlock | null = null;
+    const store: LoginBlockStore = { get: async () => saved, set: async (b) => void (saved = b), clear: async () => void (saved = null) };
+    const opts = { loginBlockStore: store, fingerprintSecret: "server-secret-0123456789" };
+
+    const first = await provider(opts).send(msg);
+    expect(first.ok).toBe(false);
+    if (!first.ok) {
+      expect(first.errorCode).toBe("115");
+      expect(first.errorMessage).toMatch(/Invalid credentials/);
+      expect(first.errorMessage).toMatch(/3 login attempts left/);
+      expect(first.notAttempted).toBe(true);
+      expect(first.raw).toMatchObject({ stage: "login", remainingCount: 3 });
+      expect(JSON.stringify(first.raw)).not.toContain("secret");
+    }
+    expect(saved!.fingerprint).toMatch(/^[0-9a-f]{64}$/);
+    expect(JSON.stringify(saved)).not.toContain("secret");
+
+    // New server instance: memory is empty, the shared store still blocks it.
+    __resetDialogEsmsState();
+    const second = await provider(opts).send(msg);
+    expect(!second.ok && second.errorCode === "ESMS_LOGIN_BLOCKED" && /Settings/.test(second.errorMessage)).toBe(true);
+    expect(loginCalls()).toHaveLength(1);
+    expect(await provider(opts).loginBlock()).not.toBeNull();
+
+    // Changed password in Vercel → different fingerprint → exactly one new attempt.
+    script.login = undefined;
+    const fixed = await provider({ ...opts, password: "new-secret" }).send(msg);
+    expect(fixed.ok).toBe(true);
+    expect(loginCalls()).toHaveLength(2);
+  });
+
+  test("a Super Admin can allow one new attempt after Dialog fixes it; store errors never risk a login", async () => {
+    script.login = () => ({ status: "failed", comment: "Invalid credentials", token: null, remainingCount: 4, expiration: null, errCode: 115 });
+    let saved: LoginBlock | null = null;
+    const store: LoginBlockStore = { get: async () => saved, set: async (b) => void (saved = b), clear: async () => void (saved = null) };
+    const p = provider({ loginBlockStore: store, fingerprintSecret: "s" });
+    await p.send(msg);
+    await p.send(msg);
+    expect(loginCalls()).toHaveLength(1);
+
+    script.login = undefined; // Dialog enabled API access
+    await p.allowNewLoginAttempt();
+    expect(saved).toBeNull();
+    expect((await p.send(msg)).ok).toBe(true);
+    expect(loginCalls()).toHaveLength(2);
+
+    __resetDialogEsmsState();
+    const broken: LoginBlockStore = { get: async () => { throw new Error("db down"); }, set: async () => {}, clear: async () => {} };
+    const r = await provider({ loginBlockStore: broken }).send(msg);
+    expect(!r.ok && r.errorCode === "ESMS_LOGIN_CHECK_FAILED" && r.retryable).toBe(true);
+    expect(loginCalls()).toHaveLength(2);
   });
 
   test("blackout period (118) is reported clearly and later sends fail fast", async () => {

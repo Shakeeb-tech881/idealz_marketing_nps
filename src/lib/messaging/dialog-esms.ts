@@ -1,4 +1,4 @@
-import { createHash, randomInt } from "node:crypto";
+import { createHash, createHmac, randomInt } from "node:crypto";
 import type { DeliveryReport, SendSmsInput, SendSmsResult, SmsProvider } from "./types";
 
 /**
@@ -12,8 +12,10 @@ import type { DeliveryReport, SendSmsInput, SendSmsResult, SmsProvider } from ".
  *
  * Notes from the document that shape this adapter:
  *  - Tokens last 12 h; log in only initially and on expiry (codes 100/105/106).
- *  - 5 wrong passwords lock the account, so after a credential error (115/116)
- *    this process never attempts to log in again until it is restarted (redeploy).
+ *  - 5 wrong passwords lock the account, so after a credential error (102/115/116)
+ *    no further login is attempted with the same username and password. The block
+ *    is kept in a shared LoginBlockStore (the database) so every server instance
+ *    respects it — not only the one that saw the error.
  *  - transaction_id must be unique for every request, even retries (error 104).
  *  - Campaigns cannot be created during the blackout period, generally 8 PM – 8 AM (error 118).
  *  - "success" means the campaign was created and paid for — not that the SMS was delivered.
@@ -30,7 +32,25 @@ export interface DialogEsmsConfig {
   apiBaseUrl?: string;
   /** Full delivery-report URL ending in "?" or "&" (eSMS appends campaignId=…). */
   pushNotificationUrl?: string | null;
+  /** Shared record of a rejected login, so all server instances stop trying. */
+  loginBlockStore?: LoginBlockStore | null;
+  /** Server-side secret used to fingerprint the credentials (HMAC), so the stored block never contains anything password-derived that could be guessed offline. */
+  fingerprintSecret?: string;
   fetchImpl?: typeof fetch;
+}
+
+/** A rejected login for one specific username + password (identified by fingerprint). */
+export interface LoginBlock {
+  fingerprint: string;
+  code: string;
+  message: string;
+  at: string;
+}
+
+export interface LoginBlockStore {
+  get(): Promise<LoginBlock | null>;
+  set(block: LoginBlock): Promise<void>;
+  clear(): Promise<void>;
 }
 
 export const DIALOG_ESMS_DEFAULTS = {
@@ -74,7 +94,7 @@ const PAUSE_MS: Record<string, number> = { "113": 5 * 60_000, "114": 2 * 60_000,
 // Process-wide state (one per server instance). Never sent to the browser.
 let tokenCache: { key: string; token: string; expiresAt: number } | null = null;
 let loginInFlight: Promise<LoginResult> | null = null;
-let credentialsRejected: { key: string; code: string; message: string } | null = null;
+let credentialsRejected: LoginBlock | null = null;
 let pausedUntil: { until: number; code: string; message: string } | null = null;
 
 /** Test helper: reset process-wide state. */
@@ -85,7 +105,19 @@ export function __resetDialogEsmsState() {
   pausedUntil = null;
 }
 
-type LoginResult = { ok: true; token: string } | { ok: false; code: string; message: string; retryable: boolean };
+type LoginResult = { ok: true; token: string } | { ok: false; code: string; message: string; retryable: boolean; raw?: Record<string, unknown> | null };
+
+/** Message shown while a rejected login is blocking further attempts. */
+export function blockedLoginMessage(b: Pick<LoginBlock, "message" | "at">): string {
+  const when = new Date(b.at);
+  const at = Number.isNaN(when.getTime())
+    ? ""
+    : ` on ${new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Colombo", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).format(when)}`;
+  return (
+    `Login blocked to protect the eSMS account: Dialog rejected the username or password${at} (${b.message}). ` +
+    "Correct DIALOG_ESMS_USERNAME / DIALOG_ESMS_PASSWORD in Vercel and redeploy, or – if Dialog fixed it on their side – a Super Admin can allow one new attempt in Settings → Integrations."
+  );
+}
 
 /** +94771234567 → "771234567" (the 9-digit format eSMS requires). Null if not a Sri Lankan mobile. */
 export function toEsmsMobile(e164: string): string | null {
@@ -112,7 +144,8 @@ export class DialogEsmsSmsProvider implements SmsProvider {
   readonly name = "dialog_esms";
   readonly isTest = false;
   readonly supportsDeliveryReports: boolean;
-  private readonly cfg: Required<Omit<DialogEsmsConfig, "fetchImpl" | "pushNotificationUrl">> & { pushNotificationUrl: string | null };
+  private readonly cfg: Required<Omit<DialogEsmsConfig, "fetchImpl" | "pushNotificationUrl" | "loginBlockStore">> & { pushNotificationUrl: string | null };
+  private readonly store: LoginBlockStore | null;
   private readonly fetchImpl: typeof fetch;
 
   constructor(config: DialogEsmsConfig) {
@@ -124,7 +157,9 @@ export class DialogEsmsSmsProvider implements SmsProvider {
       loginUrl: config.loginUrl || DIALOG_ESMS_DEFAULTS.loginUrl,
       apiBaseUrl: (config.apiBaseUrl || DIALOG_ESMS_DEFAULTS.apiBaseUrl).replace(/\/$/, ""),
       pushNotificationUrl: config.pushNotificationUrl ?? null,
+      fingerprintSecret: config.fingerprintSecret ?? "",
     };
+    this.store = config.loginBlockStore ?? null;
     this.fetchImpl = config.fetchImpl ?? fetch;
     this.supportsDeliveryReports = !!this.cfg.pushNotificationUrl;
   }
@@ -136,14 +171,37 @@ export class DialogEsmsSmsProvider implements SmsProvider {
     if (!this.cfg.sourceAddress) p.push("DIALOG_ESMS_SOURCE_ADDRESS (SMS mask, e.g. iDealzLanka) is not set");
     else if (!isValidMask(this.cfg.sourceAddress)) p.push("DIALOG_ESMS_SOURCE_ADDRESS must be 1–11 letters or numbers (e.g. iDealzLanka)");
     if (![0, 4].includes(this.cfg.paymentMethod)) p.push("DIALOG_ESMS_PAYMENT_METHOD must be 0 (wallet) or 4 (API package)");
-    if (credentialsRejected?.key === this.credentialKey()) {
-      p.push(`Login was rejected (${credentialsRejected.message}). Fix the credentials in Vercel and redeploy – no further login attempts will be made until then, to avoid locking the account.`);
-    }
+    // With a shared store the block is checked asynchronously (loginBlock()).
+    if (!this.store && credentialsRejected?.fingerprint === this.credentialKey()) p.push(blockedLoginMessage(credentialsRejected));
     return p;
   }
 
   private credentialKey() {
-    return createHash("sha256").update(`${this.cfg.username}\u0000${this.cfg.password}`).digest("hex");
+    const data = `${this.cfg.username}\u0000${this.cfg.password}`;
+    return this.cfg.fingerprintSecret
+      ? createHmac("sha256", this.cfg.fingerprintSecret).update(data).digest("hex")
+      : createHash("sha256").update(data).digest("hex");
+  }
+
+  /** The block that applies to the current username + password, if any. The shared store is authoritative. */
+  async loginBlock(): Promise<LoginBlock | null> {
+    const key = this.credentialKey();
+    if (!this.store) return credentialsRejected?.fingerprint === key ? credentialsRejected : null;
+    const b = await this.store.get();
+    if (b?.fingerprint === key) {
+      credentialsRejected = b;
+      return b;
+    }
+    // Cleared by a Super Admin, or the credentials were changed: forget any local copy.
+    if (credentialsRejected?.fingerprint === key) credentialsRejected = null;
+    return null;
+  }
+
+  /** Super Admin action once Dialog confirms the problem is fixed: permits one new login attempt. */
+  async allowNewLoginAttempt(): Promise<void> {
+    credentialsRejected = null;
+    tokenCache = null;
+    if (this.store) await this.store.clear();
   }
 
   private async postJson(url: string, body: unknown, token?: string): Promise<{ httpOk: boolean; status: number; json: Record<string, unknown> | null }> {
@@ -165,15 +223,22 @@ export class DialogEsmsSmsProvider implements SmsProvider {
 
   private async login(): Promise<LoginResult> {
     const key = this.credentialKey();
-    if (credentialsRejected?.key === key) {
-      return { ok: false, code: credentialsRejected.code, message: credentialsRejected.message, retryable: false };
-    }
     if (tokenCache?.key === key && tokenCache.expiresAt - TOKEN_REFRESH_MARGIN_MS > Date.now()) {
       return { ok: true, token: tokenCache.token };
     }
     if (loginInFlight) return loginInFlight;
     loginInFlight = (async (): Promise<LoginResult> => {
       try {
+        let block: LoginBlock | null;
+        try {
+          block = await this.loginBlock();
+        } catch (e) {
+          // Can't confirm it is safe to try the password: don't risk a lock-out.
+          console.error("[dialog-esms] login block check failed", e);
+          return { ok: false, code: "ESMS_LOGIN_CHECK_FAILED", message: "Could not check the eSMS login status – try again in a minute", retryable: true };
+        }
+        if (block) return { ok: false, code: "ESMS_LOGIN_BLOCKED", message: blockedLoginMessage(block), retryable: false };
+
         const { json, status } = await this.postJson(this.cfg.loginUrl, { username: this.cfg.username, password: this.cfg.password });
         const token = typeof json?.token === "string" ? json.token : null;
         if (json?.status === "success" && token) {
@@ -182,14 +247,30 @@ export class DialogEsmsSmsProvider implements SmsProvider {
           return { ok: true, token };
         }
         const code = String(json?.errCode ?? "").trim() || `HTTP_${status}`;
-        const err = errorFor(code, typeof json?.comment === "string" ? json.comment : undefined);
+        const comment = typeof json?.comment === "string" ? json.comment.trim().slice(0, 160) : "";
+        const remaining = typeof json?.remainingCount === "number" ? json.remainingCount : null;
+        const err = errorFor(code, comment || undefined);
+        // Dialog's own wording and the attempts left, so staff know where they stand.
+        const detail = [
+          err.message,
+          comment && comment.toLowerCase() !== err.message.toLowerCase() ? `Dialog says: "${comment}"` : null,
+          remaining !== null ? `${remaining} login attempt${remaining === 1 ? "" : "s"} left before Dialog locks the account` : null,
+        ].filter(Boolean).join(" – ");
+        // The token is never part of a failed reply, but only keep the documented fields.
+        const raw = { stage: "login", errCode: json?.errCode ?? null, comment: comment || null, remainingCount: remaining, httpStatus: status };
         // A wrong password counts towards the 5-attempt lock: never retry with the same credentials.
         // eSMS returns remainingCount (a number) only when a password attempt was counted.
-        if (CREDENTIAL_ERRORS.has(code) || typeof json?.remainingCount === "number") {
-          credentialsRejected = { key, code, message: err.message };
-          return { ok: false, code, message: err.message, retryable: false };
+        if (CREDENTIAL_ERRORS.has(code) || remaining !== null) {
+          const b: LoginBlock = { fingerprint: key, code, message: detail, at: new Date().toISOString() };
+          credentialsRejected = b;
+          try {
+            await this.store?.set(b);
+          } catch (e) {
+            console.error("[dialog-esms] could not save login block", e);
+          }
+          return { ok: false, code, message: detail, retryable: false, raw };
         }
-        return { ok: false, code, message: `eSMS login failed: ${err.message}`, retryable: true };
+        return { ok: false, code, message: `eSMS login failed: ${detail}`, retryable: true, raw };
       } catch (e) {
         return { ok: false, code: "NETWORK_ERROR", message: `Could not reach Dialog eSMS to log in (${(e as Error).name})`, retryable: true };
       } finally {
@@ -202,7 +283,7 @@ export class DialogEsmsSmsProvider implements SmsProvider {
   async send(input: SendSmsInput): Promise<SendSmsResult> {
     const problems = this.configurationProblems();
     if (problems.length) {
-      return { ok: false, errorCode: "DIALOG_ESMS_NOT_CONFIGURED", errorMessage: problems.join("; "), retryable: false, raw: null };
+      return { ok: false, errorCode: "DIALOG_ESMS_NOT_CONFIGURED", errorMessage: problems.join("; "), retryable: false, raw: null, notAttempted: true };
     }
     const mobile = toEsmsMobile(input.to);
     if (!mobile) {
@@ -213,14 +294,14 @@ export class DialogEsmsSmsProvider implements SmsProvider {
       return { ok: false, errorCode: "INVALID_SENDER_ID", errorMessage: `SMS mask "${sourceAddress}" is not valid – use 1–11 letters or numbers (Settings → Branches)`, retryable: false, raw: null };
     }
     if (pausedUntil && pausedUntil.until > Date.now()) {
-      return { ok: false, errorCode: pausedUntil.code, errorMessage: pausedUntil.message, retryable: true, raw: { skipped: "account temporarily paused after previous error" } };
+      return { ok: false, errorCode: pausedUntil.code, errorMessage: pausedUntil.message, retryable: true, raw: { skipped: "account temporarily paused after previous error" }, notAttempted: true };
     }
 
     let tokenRetried = false;
     let txnRetried = false;
     for (;;) {
       const auth = await this.login();
-      if (!auth.ok) return { ok: false, errorCode: auth.code, errorMessage: auth.message, retryable: auth.retryable, raw: null };
+      if (!auth.ok) return { ok: false, errorCode: auth.code, errorMessage: auth.message, retryable: auth.retryable, raw: auth.raw ?? null, notAttempted: true };
 
       const transactionId = newTransactionId();
       const body: Record<string, unknown> = {

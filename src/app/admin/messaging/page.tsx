@@ -4,7 +4,7 @@ import { Eye, History, FileText } from "lucide-react";
 import { requirePageRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { formatNumber, isoHoursAgo, isoMonthStart } from "@/lib/format";
-import { smsProviderStatus } from "@/lib/messaging";
+import { smsProviderStatusWithLogin } from "@/lib/messaging";
 import { getSettings } from "@/lib/settings";
 import { getLookups } from "@/server/services/lookups";
 import { PageHeader } from "@/components/admin/page-header";
@@ -64,9 +64,9 @@ export default async function MessagingPage({ searchParams }: PageProps<"/admin/
     product: r.product_model,
   }));
 
-  let provider: ReturnType<typeof smsProviderStatus> | null = null;
+  let provider: Awaited<ReturnType<typeof smsProviderStatusWithLogin>> | null = null;
   try {
-    provider = smsProviderStatus();
+    provider = await smsProviderStatusWithLogin();
   } catch {
     provider = null;
   }
@@ -91,7 +91,7 @@ export default async function MessagingPage({ searchParams }: PageProps<"/admin/
         <KpiCard
           label="SMS provider"
           value={provider ? (provider.isTest ? "Test mode" : provider.label) : "Not configured"}
-          sub={provider?.isTest ? "Messages are logged, not sent" : provider && !provider.ready ? "Configuration incomplete" : "Live"}
+          sub={provider?.isTest ? "Messages are logged, not sent" : provider?.loginBlocked ? "Login blocked – see below" : provider && !provider.ready ? "Configuration incomplete" : "Live"}
         />
       </div>
       {provider && !provider.ready && (

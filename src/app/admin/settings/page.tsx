@@ -4,14 +4,14 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { requirePageRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { getSettings } from "@/lib/settings";
-import { smsProviderStatus } from "@/lib/messaging";
+import { smsProviderStatusWithLogin } from "@/lib/messaging";
 import { formatDateTime } from "@/lib/format";
 import { getLookups } from "@/server/services/lookups";
 import { PageHeader } from "@/components/admin/page-header";
 import { Panel } from "@/components/admin/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import { BranchDialog, EmployeeDialog, GeneralSettingsForm } from "./forms";
+import { BranchDialog, EmployeeDialog, GeneralSettingsForm, AllowSmsLoginButton } from "./forms";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -31,10 +31,10 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
   const [settings, lookups] = await Promise.all([getSettings(supabase), getLookups(supabase, { includeInactive: true })]);
   const branchName = new Map(lookups.branches.map((b) => [b.id, b.name]));
 
-  let sms: ReturnType<typeof smsProviderStatus> | null = null;
+  let sms: Awaited<ReturnType<typeof smsProviderStatusWithLogin>> | null = null;
   let envError: string | null = null;
   try {
-    sms = smsProviderStatus();
+    sms = tab === "integrations" ? await smsProviderStatusWithLogin() : null;
   } catch (e) {
     envError = e instanceof Error ? e.message : "Environment not configured";
   }
@@ -115,6 +115,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
               {sms.problems.length > 0 && (
                 <ul className="list-disc space-y-1 rounded-lg bg-destructive/5 p-3 pl-8 text-destructive">{sms.problems.map((p) => <li key={p}>{p}</li>)}</ul>
               )}
+              {sms.loginBlocked && <AllowSmsLoginButton />}
               <div className="rounded-lg bg-muted/60 p-3 text-muted-foreground">
                 <p className="font-medium text-foreground">To send real SMS with Dialog eSMS</p>
                 <ol className="mt-1 list-decimal space-y-1 pl-5">

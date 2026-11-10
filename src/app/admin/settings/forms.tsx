@@ -12,7 +12,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { FormField } from "@/components/admin/form-field";
 import type { AppSettings } from "@/lib/settings";
 import type { Branch, Employee } from "@/lib/types";
-import { saveBranchAction, saveEmployeeAction, saveSettingsAction } from "./actions";
+import { allowSmsLoginAttemptAction, saveBranchAction, saveEmployeeAction, saveSettingsAction } from "./actions";
 
 type Errors = Record<string, string[] | undefined>;
 const errs = (res: unknown): Errors => ((res as { fieldErrors?: Errors }).fieldErrors ?? {});
@@ -198,5 +198,34 @@ export function EmployeeDialog({ employee, branches }: { employee?: Employee; br
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** Shown only while the eSMS login is blocked. */
+export function AllowSmsLoginButton() {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  return (
+    <div className="space-y-2 rounded-lg border border-destructive/30 p-3">
+      <p className="text-muted-foreground">
+        Changed the username or password in Vercel and redeployed? Then nothing to do here — the new details are tried automatically. Use this button only when
+        Dialog confirms they fixed the problem on their side (for example enabled API access) and the details in Vercel are unchanged.
+      </p>
+      <Button
+        variant="outline"
+        disabled={pending}
+        onClick={() => {
+          if (!confirm("Allow ONE new eSMS login attempt?\n\nOnly continue if Dialog has confirmed the problem is fixed. Every wrong attempt counts towards Dialog's 5-attempt account lock.")) return;
+          start(async () => {
+            const res = await allowSmsLoginAttemptAction();
+            if (!res.ok) return void toast.error(res.error);
+            toast.success("One new login attempt allowed. Send or retry one survey to test it.");
+            router.refresh();
+          });
+        }}
+      >
+        {pending && <Loader2 className="animate-spin" data-icon="inline-start" />} Allow one new login attempt
+      </Button>
+    </div>
   );
 }

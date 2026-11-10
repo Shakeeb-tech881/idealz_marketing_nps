@@ -24,6 +24,8 @@ export type SendSmsResult =
       errorMessage: string;
       retryable: boolean;
       raw: unknown;
+      /** True when no SMS request reached the provider (setup problem, blocked login…): the send is not counted against the invitation's 5-send limit. */
+      notAttempted?: boolean;
     };
 
 export interface DeliveryReport {

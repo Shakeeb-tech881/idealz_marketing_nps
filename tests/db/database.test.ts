@@ -344,3 +344,26 @@ describe("sales rep scorecard", () => {
     expect(after.n).toBe(before.n);
   });
 });
+
+describe("shared eSMS login block", () => {
+  test("only the server (service role) can read or change it", async () => {
+    const fp = "a".repeat(64);
+    await as(db, "service_role", null, (q) =>
+      q(`insert into sms_provider_state (provider, credential_fingerprint, error_code, message) values ('dialog_esms', $1, '115', 'Invalid credentials')`, [fp]));
+    for (const user of [U.admin, U.mgmt]) {
+      await expect(as(db, "authenticated", user, (q) => q(`select * from sms_provider_state`))).rejects.toThrow(/permission denied/);
+    }
+    await expect(as(db, "anon", null, (q) => q(`delete from sms_provider_state`))).rejects.toThrow(/permission denied/);
+    await expect(db.query(`insert into sms_provider_state (provider, credential_fingerprint, error_code, message) values ('dialog_esms', 'not-hex', '115', 'x')`)).rejects.toThrow();
+    const n = await as(db, "service_role", null, async (q) => (await q<{ n: number }>(`select count(*)::int n from sms_provider_state`)).rows[0].n);
+    expect(n).toBe(1);
+  });
+
+  test("the upgrade script can be run again safely", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-sms-login-block.sql"), "utf8"));
+    const n = await one<{ n: number }>(`select count(*)::int n from sms_provider_state`);
+    expect(n.n).toBe(1);
+  });
+});

@@ -150,7 +150,13 @@ async function sendForInvitation(
     .eq("id", log.id);
   await supabase
     .from("survey_invitations")
-    .update({ status: "failed", failed_at: now, last_error: `${result.errorCode}: ${result.errorMessage}`.slice(0, 500), send_count: args.previousSendCount + 1 })
+    .update({
+      status: "failed",
+      failed_at: now,
+      last_error: `${result.errorCode}: ${result.errorMessage}`.slice(0, 500),
+      // Nothing reached the SMS provider (e.g. login blocked): don't use up one of the 5 sends.
+      send_count: result.notAttempted ? args.previousSendCount : args.previousSendCount + 1,
+    })
     .eq("id", args.invitationId);
   return { ok: false, reason: result.errorMessage, isTest: provider.isTest };
 }
