@@ -6,6 +6,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 
 export function LoginForm({ next, initialError }: { next: string; initialError?: string }) {
@@ -33,7 +34,14 @@ export function LoginForm({ next, initialError }: { next: string; initialError?:
       router.replace(next);
       router.refresh();
     } else {
-      await supabase.auth.resetPasswordForEmail(email.trim(), {
+      // The reset email must work in any browser (phones often open mail links in a different one),
+      // so request it with the "implicit" link style: the session arrives in the link itself
+      // (#access_token=…, completed by /auth/finish) instead of needing this browser's PKCE cookie.
+      // Works with Supabase's default email templates — no custom SMTP needed.
+      const resetClient = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+        auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "idealz-password-reset" },
+      });
+      await resetClient.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/auth/callback?next=/auth/set-password`,
       });
       setLoading(false);

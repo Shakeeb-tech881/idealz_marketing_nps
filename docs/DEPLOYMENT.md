@@ -21,7 +21,7 @@ git push -u origin main
 3. **Auth settings** (Authentication → Providers / Settings):
    - Email provider **enabled**, **“Allow new users to sign up” disabled** (users are invited by a Super Admin).
    - Site URL: your app address, e.g. `https://cx.idealz.lk` (must match `NEXT_PUBLIC_APP_URL`). Redirect URLs: `https://cx.idealz.lk/**` (and `http://localhost:3000/**` for development).
-   - **Email Templates** (Authentication → Emails): so invitation and password-reset links work on any phone or browser, replace the link in two templates:
+   - **Email Templates** (optional; editing needs custom SMTP): invitation and password-reset links already work with the default templates. With custom SMTP you can switch them to the token-hash style, which the callback also supports:
      - *Invite user*: `<a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=invite">Accept the invitation</a>`
      - *Reset Password*: `<a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery">Reset your password</a>`
      Links work once. Some company mail filters open links automatically and use them up; if a fresh link says "already used", ask the person to use "Forgot password?" and open the new email straight away.
