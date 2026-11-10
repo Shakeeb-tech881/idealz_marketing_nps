@@ -20,7 +20,11 @@ git push -u origin main
    - Dashboard → SQL editor: run each file in `supabase/migrations/` in filename order.
 3. **Auth settings** (Authentication → Providers / Settings):
    - Email provider **enabled**, **“Allow new users to sign up” disabled** (users are invited by a Super Admin).
-   - Site URL: `https://feedback.idealzlanka.com`; Redirect URLs: `https://feedback.idealzlanka.com/auth/callback` (and `http://localhost:3000/auth/callback` for development).
+   - Site URL: your app address, e.g. `https://cx.idealz.lk` (must match `NEXT_PUBLIC_APP_URL`). Redirect URLs: `https://cx.idealz.lk/**` (and `http://localhost:3000/**` for development).
+   - **Email Templates** (Authentication → Emails): so invitation and password-reset links work on any phone or browser, replace the link in two templates:
+     - *Invite user*: `<a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=invite">Accept the invitation</a>`
+     - *Reset Password*: `<a href="{{ .SiteURL }}/auth/callback?token_hash={{ .TokenHash }}&type=recovery">Reset your password</a>`
+     Links work once. Some company mail filters open links automatically and use them up; if a fresh link says "already used", ask the person to use "Forgot password?" and open the new email straight away.
    - Configure custom SMTP (Authentication → SMTP) so invitation / reset emails come from an iDealz address.
 4. **Bootstrap the first Super Admin** — create the user in Authentication → Users, then run `scripts/create-super-admin.sql`.
 5. Optional logo: create a public Storage bucket (e.g. `branding`), upload the logo, paste its public URL in Settings → General.

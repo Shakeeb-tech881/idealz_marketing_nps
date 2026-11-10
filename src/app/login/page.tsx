@@ -6,7 +6,9 @@ export const metadata: Metadata = { title: "Sign in" };
 
 const ERRORS: Record<string, string> = {
   inactive: "Your account is not active. Please contact a Super Admin.",
-  link: "That sign-in link is invalid or has expired. Please request a new one.",
+  link: "That sign-in link is not valid. Click “Forgot password?” below to get a new one.",
+  link_expired: "That link has already been used or has expired (links work once, for a limited time). Click “Forgot password?” below to get a new one.",
+  link_browser: "Open the reset link in the same browser where you clicked “Forgot password?”, or ask a Super Admin to update the Supabase email templates (see docs/DEPLOYMENT.md) so links work in any browser.",
 };
 
 export default async function LoginPage({ searchParams }: PageProps<"/login">) {
