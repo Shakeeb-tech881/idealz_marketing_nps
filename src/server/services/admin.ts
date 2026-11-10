@@ -3,6 +3,7 @@ import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
+import { generateTemporaryPassword } from "@/lib/temp-password";
 import type { Profile } from "@/lib/types";
 import { friendlyDbError } from "./customers";
 
@@ -95,6 +96,61 @@ export async function inviteUser(actor: Profile, raw: unknown) {
   const supabase = await createClient();
   await supabase.rpc("log_audit", { p_action: "user.invited", p_entity_type: "profiles", p_entity_id: data.user.id, p_details: { email: v.email, role: v.role } });
   return { ok: true as const };
+}
+
+/**
+ * Super-admin only: create a login with a one-time temporary password (no email needed).
+ * The password is returned once for the admin to pass on; the user must change it at first sign-in.
+ */
+export async function createUserWithTemporaryPassword(actor: Profile, raw: unknown) {
+  if (actor.role !== "super_admin") return { ok: false as const, error: "Only Super Admins can manage users." };
+  const parsed = inviteUserSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false as const, error: "Please correct the highlighted fields.", fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]> };
+  const v = parsed.data;
+  const admin = createAdminClient();
+  const password = generateTemporaryPassword();
+  const { data, error } = await admin.auth.admin.createUser({
+    email: v.email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: v.full_name },
+    // Role / branch are written by the server (app_metadata is not user-editable).
+    app_metadata: { role: v.role, branch_id: v.branch_id, provisioned: true, must_change_password: true },
+  });
+  if (error || !data.user) {
+    if (/already|registered|exists/i.test(error?.message ?? "")) {
+      return { ok: false as const, error: "This email already has a login. Click Edit on that user in the list and use “Set temporary password”." };
+    }
+    return { ok: false as const, error: error?.message ?? "The user could not be created." };
+  }
+  const { error: pErr } = await admin
+    .from("profiles")
+    .upsert({ id: data.user.id, email: v.email, full_name: v.full_name, role: v.role, branch_id: v.branch_id, employee_id: v.employee_id, is_active: true });
+  if (pErr) return { ok: false as const, error: friendlyDbError(pErr) };
+  const supabase = await createClient();
+  // The password itself is never logged.
+  await supabase.rpc("log_audit", { p_action: "user.created_with_temporary_password", p_entity_type: "profiles", p_entity_id: data.user.id, p_details: { email: v.email, role: v.role } });
+  return { ok: true as const, email: v.email, password };
+}
+
+/** Super-admin only: replace a user's password with a new temporary one (e.g. the invitation email never arrived). */
+export async function setTemporaryPassword(actor: Profile, userId: string) {
+  if (actor.role !== "super_admin") return { ok: false as const, error: "Only Super Admins can manage users." };
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) return { ok: false as const, error: "User not found." };
+  if (userId === actor.id) return { ok: false as const, error: "For your own account, use “Forgot password?” on the sign-in page." };
+  const supabase = await createClient();
+  const { data: profile } = await supabase.from("profiles").select("id, email, is_active").eq("id", userId).maybeSingle();
+  if (!profile) return { ok: false as const, error: "User not found." };
+  if (!profile.is_active) return { ok: false as const, error: "This user is inactive. Tick Active and save first." };
+  const password = generateTemporaryPassword();
+  const { error } = await createAdminClient().auth.admin.updateUserById(userId, {
+    password,
+    // app_metadata is merged, so role and branch are kept.
+    app_metadata: { must_change_password: true },
+  });
+  if (error) return { ok: false as const, error: error.message };
+  await supabase.rpc("log_audit", { p_action: "user.temporary_password_set", p_entity_type: "profiles", p_entity_id: userId, p_details: { email: profile.email } });
+  return { ok: true as const, email: profile.email as string, password };
 }
 
 export const updateUserSchema = z

@@ -6,9 +6,9 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { createClient } from "@/lib/supabase/client";
+import { setNewPasswordAction } from "./actions";
 
-export function SetPasswordForm() {
+export function SetPasswordForm({ firstSignIn = false }: { firstSignIn?: boolean }) {
   const router = useRouter();
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -20,9 +20,9 @@ export function SetPasswordForm() {
     if (password.length < 10) return setError("Use at least 10 characters.");
     if (password !== confirm) return setError("Passwords do not match.");
     setLoading(true);
-    const { error } = await createClient().auth.updateUser({ password });
+    const res = await setNewPasswordAction(password);
     setLoading(false);
-    if (error) return setError(error.message);
+    if (!res.ok) return setError(res.error);
     router.replace("/admin");
     router.refresh();
   }
@@ -31,7 +31,9 @@ export function SetPasswordForm() {
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
         <h1 className="text-lg font-semibold">Set your password</h1>
-        <p className="text-sm text-muted-foreground">Choose a strong password of at least 10 characters.</p>
+        <p className="text-sm text-muted-foreground">
+          {firstSignIn ? "You signed in with a temporary password. Choose your own password (at least 10 characters) to continue." : "Choose a strong password of at least 10 characters."}
+        </p>
       </div>
       <div className="space-y-1.5">
         <Label htmlFor="pw">New password</Label>

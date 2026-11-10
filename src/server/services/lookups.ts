@@ -15,6 +15,10 @@ export async function getLookups(sb: SupabaseClient, opts: { includeInactive?: b
     bq = bq.eq("id", opts.profile.branch_id);
     eq = eq.eq("branch_id", opts.profile.branch_id);
   }
+  // Staff only ever see themselves (filters, salesperson picker).
+  if (opts.profile?.role === "staff") {
+    eq = opts.profile.employee_id ? eq.eq("id", opts.profile.employee_id) : eq.eq("id", "00000000-0000-0000-0000-000000000000");
+  }
   const [b, e] = await Promise.all([bq, eq]);
   return { branches: (b.data ?? []) as Branch[], employees: (e.data ?? []) as Employee[] };
 }

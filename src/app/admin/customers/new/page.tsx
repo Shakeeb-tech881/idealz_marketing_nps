@@ -15,7 +15,7 @@ export default async function NewCustomerPage() {
   return (
     <>
       <PageHeader title="Add customer" description="Record a purchase or a visit. You can send the survey from the customer page or Survey Messaging." />
-      <NewCustomerForm branches={branches} employees={employees} defaultBranch={profile.branch_id ?? (branches.length === 1 ? branches[0].id : null)} today={todayColombo()} />
+      <NewCustomerForm branches={branches} employees={employees} defaultBranch={profile.branch_id ?? (branches.length === 1 ? branches[0].id : null)} today={todayColombo()} defaultEmployee={profile.role === "staff" ? profile.employee_id : null} lockEmployee={profile.role === "staff"} />
     </>
   );
 }

@@ -30,6 +30,13 @@ export async function proxy(request: NextRequest) {
     login.search = `?next=${encodeURIComponent(request.nextUrl.pathname)}`;
     return NextResponse.redirect(login);
   }
+  // Signed in with a temporary password from a Super Admin: choose your own first.
+  if (data.user?.app_metadata?.must_change_password === true && request.nextUrl.pathname.startsWith("/admin")) {
+    const setPw = request.nextUrl.clone();
+    setPw.pathname = "/auth/set-password";
+    setPw.search = "?first=1";
+    return NextResponse.redirect(setPw);
+  }
   return response;
 }
 

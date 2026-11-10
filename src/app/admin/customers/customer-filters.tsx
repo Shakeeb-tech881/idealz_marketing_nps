@@ -47,12 +47,14 @@ export function CustomerFilters({ branches, employees }: { branches: Branch[]; e
           ))}
         </NativeSelect>
       )}
-      <NativeSelect className="w-44" aria-label="Employee" value={sp.get("employee") ?? ""} onChange={(e) => update({ employee: e.target.value || null })}>
-        <option value="">All employees</option>
-        {emps.map((e) => (
-          <option key={e.id} value={e.id}>{e.full_name}</option>
-        ))}
-      </NativeSelect>
+      {employees.length > 1 && (
+        <NativeSelect className="w-44" aria-label="Employee" value={sp.get("employee") ?? ""} onChange={(e) => update({ employee: e.target.value || null })}>
+          <option value="">All employees</option>
+          {emps.map((e) => (
+            <option key={e.id} value={e.id}>{e.full_name}</option>
+          ))}
+        </NativeSelect>
+      )}
       <NativeSelect className="w-40" aria-label="Purchase status" value={sp.get("status") ?? ""} onChange={(e) => update({ status: e.target.value || null })}>
         <option value="">All statuses</option>
         <option value="purchased">Purchased</option>

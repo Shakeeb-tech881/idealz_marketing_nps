@@ -367,3 +367,33 @@ describe("shared eSMS login block", () => {
     expect(n.n).toBe(1);
   });
 });
+
+describe("staff record visits only for themselves", () => {
+  const visit = (q: (sql: string, p?: unknown[]) => Promise<unknown>, employee: string | null) =>
+    q(`insert into customer_interactions (customer_id, branch_id, employee_id, purchase_status, created_by)
+       values ((select public.ensure_customer('Own visit', '+94770000950')), $1, $2, 'not_purchased', $3)`, [branchA, employee, U.staffA]);
+
+  test("staff can credit themselves or leave it empty, but not a colleague", async () => {
+    await as(db, "authenticated", U.staffA, (q) => visit(q, empA1));
+    await as(db, "authenticated", U.staffA, (q) => visit(q, null));
+    await expect(as(db, "authenticated", U.staffA, (q) => visit(q, empA2))).rejects.toThrow(/row-level security/);
+  });
+
+  test("staff cannot move their own visit to a colleague", async () => {
+    await expect(as(db, "authenticated", U.staffA, (q) =>
+      q(`update customer_interactions set employee_id = $1 where created_by = $2`, [empA2, U.staffA]))).rejects.toThrow(/row-level security/);
+  });
+
+  test("branch managers can still record visits for any rep in their showroom", async () => {
+    await as(db, "authenticated", U.bmA, (q) =>
+      q(`insert into customer_interactions (customer_id, branch_id, employee_id, purchase_status, created_by)
+         values ((select public.ensure_customer('Mgr visit', '+94770000951')), $1, $2, 'not_purchased', $3)`, [branchA, empA2, U.bmA]));
+  });
+
+  test("the upgrade script can be run again safely", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-staff-own-visits.sql"), "utf8"));
+    await expect(as(db, "authenticated", U.staffA, (q) => visit(q, empA2))).rejects.toThrow(/row-level security/);
+  });
+});

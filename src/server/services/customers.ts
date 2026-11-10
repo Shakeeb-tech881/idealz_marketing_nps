@@ -24,9 +24,12 @@ export async function insertInteraction(
   /** Bulk imports carry no rep KPI data, so they are left out of the scorecard. */
   opts: { kpiTracked?: boolean } = {},
 ) {
+  // Staff can only record visits for themselves — they count towards their own scorecard.
+  // (Also enforced by row-level security.)
+  const employee_id = actor.role === "staff" ? (actor.employee_id ?? null) : i.employee_id;
   return supabase
     .from("customer_interactions")
-    .insert({ ...i, customer_id: customerId, created_by: actor.id, kpi_tracked: opts.kpiTracked ?? true })
+    .insert({ ...i, employee_id, customer_id: customerId, created_by: actor.id, kpi_tracked: opts.kpiTracked ?? true })
     .select("id")
     .single();
 }

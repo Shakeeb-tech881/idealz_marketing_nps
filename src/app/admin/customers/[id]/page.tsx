@@ -107,7 +107,7 @@ export default async function CustomerPage({ params }: PageProps<"/admin/custome
             <>
               {showContact && <EditContactDialog customerId={customer.id} initial={{ full_name: customer.full_name, mobile: formatMobile(customer.mobile), email: customer.email ?? "" }} />}
               <OptOutToggle customerId={customer.id} optedOut={customer.sms_opt_out} />
-              <AddInteractionDialog customerId={customer.id} branches={lookups.branches} employees={lookups.employees} defaultBranch={profile.branch_id} today={todayColombo()} />
+              <AddInteractionDialog customerId={customer.id} branches={lookups.branches} employees={lookups.employees} defaultBranch={profile.branch_id} today={todayColombo()} defaultEmployee={profile.role === "staff" ? profile.employee_id : null} lockEmployee={profile.role === "staff"} />
             </>
           )
         }

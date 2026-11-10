@@ -41,11 +41,20 @@ export function LoginForm({ next, initialError }: { next: string; initialError?:
       const resetClient = createSupabaseClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
         auth: { flowType: "implicit", persistSession: false, autoRefreshToken: false, detectSessionInUrl: false, storageKey: "idealz-password-reset" },
       });
-      await resetClient.auth.resetPasswordForEmail(email.trim(), {
+      const { error } = await resetClient.auth.resetPasswordForEmail(email.trim(), {
         redirectTo: `${window.location.origin}/auth/callback?next=/auth/set-password`,
       });
       setLoading(false);
-      setInfo("If an account exists for this email, a password reset link has been sent.");
+      // Supabase answers the same for known and unknown emails, so showing a send failure reveals nothing.
+      if (error) {
+        setError(
+          error.status === 429 || /rate limit|too many/i.test(error.message)
+            ? "Too many emails were sent in the last hour. Wait an hour and try again, or ask a Super Admin to set a temporary password for you (Users & Roles → Edit)."
+            : "The reset email could not be sent right now. Try again later, or ask a Super Admin to set a temporary password for you.",
+        );
+        return;
+      }
+      setInfo("If an account exists for this email, a reset link has been sent. Check Spam too. Not arriving? Ask a Super Admin to set a temporary password for you.");
     }
   }
 

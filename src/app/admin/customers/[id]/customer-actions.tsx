@@ -158,7 +158,7 @@ export function ResendButton({ invitationId, failed }: { invitationId: string; f
   );
 }
 
-export function AddInteractionDialog(props: { customerId: string; branches: Branch[]; employees: Employee[]; defaultBranch: string | null; today: string }) {
+export function AddInteractionDialog(props: { customerId: string; branches: Branch[]; employees: Employee[]; defaultBranch: string | null; today: string; defaultEmployee?: string | null; lockEmployee?: boolean }) {
   const [open, setOpen] = useState(false);
   return (
     <Dialog open={open} onOpenChange={setOpen}>

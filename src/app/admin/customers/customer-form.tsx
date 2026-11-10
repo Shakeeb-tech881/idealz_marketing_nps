@@ -105,6 +105,7 @@ function InteractionFields({
   employees,
   branchId,
   status,
+  lockEmployee = false,
 }: {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register: any;
@@ -113,6 +114,8 @@ function InteractionFields({
   employees: Employee[];
   branchId: string;
   status: string;
+  /** Staff: the salesperson is always themselves (also enforced on the server and in the database). */
+  lockEmployee?: boolean;
 }) {
   const emps = employees.filter((e) => e.branch_id === branchId);
   return (
@@ -125,14 +128,25 @@ function InteractionFields({
           ))}
         </NativeSelect>
       </FormField>
-      <FormField label="Employee / salesperson" htmlFor="employee_id" error={errors.employee_id?.message} hint={!branchId ? "Select a branch first" : undefined}>
-        <NativeSelect id="employee_id" disabled={!branchId} {...register("employee_id")}>
-          <option value="">Not specified</option>
-          {emps.map((e) => (
-            <option key={e.id} value={e.id}>{e.full_name}{e.employee_code ? ` (${e.employee_code})` : ""}</option>
-          ))}
-        </NativeSelect>
-      </FormField>
+      {lockEmployee ? (
+        <FormField
+          label="Employee / salesperson"
+          htmlFor="employee_locked"
+          hint={employees.length ? "Visits you record are credited to you." : "Your login is not linked to an employee record – ask a Super Admin (Users & Roles → Edit)."}
+        >
+          <input type="hidden" {...register("employee_id")} />
+          <Input id="employee_locked" readOnly value={employees[0]?.full_name ?? "Not linked"} className="bg-muted/50" />
+        </FormField>
+      ) : (
+        <FormField label="Employee / salesperson" htmlFor="employee_id" error={errors.employee_id?.message} hint={!branchId ? "Select a branch first" : undefined}>
+          <NativeSelect id="employee_id" disabled={!branchId} {...register("employee_id")}>
+            <option value="">Not specified</option>
+            {emps.map((e) => (
+              <option key={e.id} value={e.id}>{e.full_name}{e.employee_code ? ` (${e.employee_code})` : ""}</option>
+            ))}
+          </NativeSelect>
+        </FormField>
+      )}
       <FormField label="Purchase status" htmlFor="purchase_status" required error={errors.purchase_status?.message}>
         <NativeSelect id="purchase_status" {...register("purchase_status")}>
           <option value="purchased">Purchased</option>
@@ -177,11 +191,11 @@ function InteractionFields({
   );
 }
 
-export function NewCustomerForm({ branches, employees, defaultBranch, today }: { branches: Branch[]; employees: Employee[]; defaultBranch: string | null; today: string }) {
+export function NewCustomerForm({ branches, employees, defaultBranch, today, defaultEmployee = null, lockEmployee = false }: { branches: Branch[]; employees: Employee[]; defaultBranch: string | null; today: string; defaultEmployee?: string | null; lockEmployee?: boolean }) {
   const router = useRouter();
   const form = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(newCustomerSchema),
-    defaultValues: { full_name: "", mobile: "", email: "", branch_id: defaultBranch ?? "", employee_id: "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
+    defaultValues: { full_name: "", mobile: "", email: "", branch_id: defaultBranch ?? "", employee_id: defaultEmployee ?? "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
   });
   const branchId = useWatch({ control: form.control, name: "branch_id" }) as string;
   const status = useWatch({ control: form.control, name: "purchase_status" }) as string;
@@ -214,7 +228,7 @@ export function NewCustomerForm({ branches, employees, defaultBranch, today }: {
         </div>
       </Panel>
       <Panel title="Purchase / visit" description="Each interaction can receive its own survey invitation.">
-        <InteractionFields register={form.register} errors={errors} branches={branches} employees={employees} branchId={branchId} status={status} />
+        <InteractionFields register={form.register} errors={errors} branches={branches} employees={employees} branchId={branchId} status={status} lockEmployee={lockEmployee} />
         <SalesFields register={form.register} errors={errors} status={status} setValue={form.setValue} />
         <div className="mt-6 flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
@@ -230,11 +244,11 @@ export function NewCustomerForm({ branches, employees, defaultBranch, today }: {
 type IIn = z.input<typeof interactionSchema>;
 type IOut = z.output<typeof interactionSchema>;
 
-export function AddInteractionForm({ customerId, branches, employees, defaultBranch, today, onDone }: { customerId: string; branches: Branch[]; employees: Employee[]; defaultBranch: string | null; today: string; onDone?: () => void }) {
+export function AddInteractionForm({ customerId, branches, employees, defaultBranch, today, onDone, defaultEmployee = null, lockEmployee = false }: { customerId: string; branches: Branch[]; employees: Employee[]; defaultBranch: string | null; today: string; onDone?: () => void; defaultEmployee?: string | null; lockEmployee?: boolean }) {
   const router = useRouter();
   const form = useForm<IIn, unknown, IOut>({
     resolver: zodResolver(interactionSchema),
-    defaultValues: { branch_id: defaultBranch ?? "", employee_id: "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
+    defaultValues: { branch_id: defaultBranch ?? "", employee_id: defaultEmployee ?? "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
   });
   const branchId = useWatch({ control: form.control, name: "branch_id" }) as string;
   const status = useWatch({ control: form.control, name: "purchase_status" }) as string;
@@ -254,7 +268,7 @@ export function AddInteractionForm({ customerId, branches, employees, defaultBra
 
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
-      <InteractionFields register={form.register} errors={errors} branches={branches} employees={employees} branchId={branchId} status={status} />
+      <InteractionFields register={form.register} errors={errors} branches={branches} employees={employees} branchId={branchId} status={status} lockEmployee={lockEmployee} />
       <SalesFields register={form.register} errors={errors} status={status} setValue={form.setValue} />
       <div className="mt-6 flex justify-end gap-2">
         <Button type="submit" disabled={form.formState.isSubmitting}>

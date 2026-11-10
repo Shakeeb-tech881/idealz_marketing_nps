@@ -70,10 +70,12 @@ export function FeedbackFilters({ branches, employees }: { branches: Branch[]; e
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
           </NativeSelect>
         )}
-        <NativeSelect className="w-44" aria-label="Employee" value={sp.get("employee") ?? ""} onChange={(e) => update({ employee: e.target.value || null })}>
-          <option value="">All employees</option>
-          {(branch ? employees.filter((e) => e.branch_id === branch) : employees).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
-        </NativeSelect>
+        {employees.length > 1 && (
+          <NativeSelect className="w-44" aria-label="Employee" value={sp.get("employee") ?? ""} onChange={(e) => update({ employee: e.target.value || null })}>
+            <option value="">All employees</option>
+            {(branch ? employees.filter((e) => e.branch_id === branch) : employees).map((e) => <option key={e.id} value={e.id}>{e.full_name}</option>)}
+          </NativeSelect>
+        )}
         <NativeSelect className="w-44" aria-label="Follow-up status" value={sp.get("status") ?? ""} onChange={(e) => update({ status: e.target.value || null })}>
           <option value="">Any follow-up status</option>
           <option value="new">New</option>
