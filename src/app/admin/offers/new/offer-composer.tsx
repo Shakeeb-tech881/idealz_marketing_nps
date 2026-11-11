@@ -14,7 +14,7 @@ import { createCampaignAction, previewAudienceAction } from "../actions";
 
 type Preview = Extract<Awaited<ReturnType<typeof previewAudienceAction>>, { ok: true }>["data"];
 
-const EXAMPLE = "Hi {{customer_name}}, the new iPhone 17 is at {{brand_name}}! Upgrade from your old phone. Stop: {{optout_link}}";
+const EXAMPLE = "The new iPhone 17 is at {{brand_name}}! Upgrade from your old phone. Visit us today. Stop: {{optout_link}}";
 
 const VARIABLE_HELP: Record<string, string> = {
   "{{customer_name}}": "first name",

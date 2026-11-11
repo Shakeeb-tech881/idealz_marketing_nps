@@ -195,7 +195,7 @@ export async function buildReport(
       const order = { graded: 0, insufficient_data: 1, low_activity: 2 } as const;
       const sorted = [...reps].sort((a, b) => order[a.status] - order[b.status] || (b.score ?? 0) - (a.score ?? 0) || a.visits - b.visits || a.name.localeCompare(b.name));
       const keys = Object.keys(KPI_WEIGHTS) as KpiKey[];
-      const KPI_SHORT: Record<KpiKey, string> = { feedback: "Feedback", phones: "Devices", accessories: "Access.", conversion: "Conversion", reviews: "Reviews", process: "Steps" };
+      const KPI_SHORT: Record<KpiKey, string> = { feedback: "Feedback", phones: "Devices", accessories: "Access.", conversion: "Conversion", reviews: "Reviews" };
       let rank = 0;
       return {
         title: meta.label,
@@ -207,8 +207,9 @@ export async function buildReport(
           { key: "visits", label: "Visits" }, { key: "sales", label: "Sales" }, { key: "conv", label: "Conv. %" },
           { key: "android", label: "Android" }, { key: "apple", label: "Apple" }, { key: "other", label: "Other dev." },
           { key: "comm", label: "Comm. acc. Rs." }, { key: "noncomm", label: "Non-comm. acc. Rs." },
-          { key: "mins", label: "Avg min" }, { key: "days", label: "Days to buy" }, { key: "steps", label: `Avg steps /${SALES_STEPS.length}` },
-          { key: "reviews", label: "Reviews asked/left" }, { key: "staff", label: "Staff rating" }, { key: "nps", label: "NPS" },
+          { key: "mins", label: "Avg min" }, { key: "days", label: "Days to buy" }, { key: "steps", label: `Steps ticked /${SALES_STEPS.length} (info)` },
+          { key: "reviews", label: "Reviews asked/confirmed" }, { key: "staff", label: "Staff rating" }, { key: "nps", label: "NPS" },
+          { key: "recording", label: "Visits vs showroom %" },
           { key: "off", label: "Days off" }, { key: "unexcused", label: "Sudden, no proof" }, { key: "penalty", label: "Leave penalty" },
           { key: "status", label: "Note", width: 24 },
         ],
@@ -234,6 +235,7 @@ export async function buildReport(
           reviews: `${r.reviewsAsked}/${r.reviewsConfirmed}`,
           staff: r.avgStaffRating,
           nps: formatNps(r.nps),
+          recording: r.recordingRate === null ? "" : Math.round(r.recordingRate * 100),
           off: r.leaveDays ?? 0,
           unexcused: r.unexcusedLeaveDays ?? 0,
           penalty: r.penalty ? -r.penalty : "",
@@ -249,6 +251,7 @@ export async function buildReport(
           `Grades: ${GRADE_BANDS.map((b) => (b.grade === "Fail" ? `Fail below ${GRADE_BANDS[GRADE_BANDS.length - 2].min}` : `${b.grade} ${b.min}+`)).join(", ")}. A blank KPI could not be measured: it is left out and the other weights scale up.`,
           `No targets: sales, accessories by sales value in Rs. (commission x${COMMISSION_ACCESSORY_WEIGHT}), conversion and Google reviews compare each rep with the showroom average (average = ${AVERAGE_SCORE}, one third above = 100).`,
           `LOW ACTIVITY (red): fewer than ${MIN_GRADED_VISITS} visits recorded with the scorecard fields in this period - not graded; manager to follow up (leave, new joiner, or visits not recorded).`,
+          `FAIR PLAY: only Google reviews confirmed by a manager count. Conversion is scaled down when a rep records fewer visits per working day than the showroom average (Visits vs showroom %).`,
           `LEAVE: device sales and accessories are compared per working day. Sudden leave without proof: -${LEAVE_PENALTY_PER_DAY} points per day on the score (max -${MAX_LEAVE_PENALTY}); informed leave and sudden leave with proof: no penalty.`,
           `Customer feedback counts only with ${minEmployeeSample}+ survey responses. Visits recorded before the scorecard was introduced, and bulk imports, are not counted.`,
         ],

@@ -14,6 +14,7 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Star,
   Store,
   UserRoundCheck,
   Users,
@@ -41,6 +42,7 @@ const ICONS: Record<string, LucideIcon> = {
   FileDown,
   ShieldCheck,
   Settings,
+  Star,
 };
 
 function NavList({ sections, onNavigate }: { sections: { title: string; items: NavItem[] }[]; onNavigate?: () => void }) {

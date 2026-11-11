@@ -35,6 +35,7 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
       { href: "/admin/employees", label: "Employee Analytics", icon: "UserRoundCheck", roles: MANAGERS },
       { href: "/admin/scorecard", label: "Rep Scorecard", icon: "Award", roles: MANAGERS },
       { href: "/admin/leave", label: "Staff Leave", icon: "CalendarOff", roles: MANAGERS },
+      { href: "/admin/reviews", label: "Google Reviews", icon: "Star", roles: MANAGERS },
       { href: "/admin/reports", label: "Reports", icon: "FileDown", roles: MANAGERS },
     ],
   },

@@ -112,8 +112,12 @@ export type SalesStep = (typeof SALES_STEPS)[number]["value"];
 export const GOOGLE_REVIEW_OPTIONS = [
   { value: "not_asked", label: "Not asked" },
   { value: "asked", label: "Asked for a review" },
-  { value: "confirmed", label: "Customer left a review" },
+  // Set by a manager after checking Google (Google Reviews page) – never by the sales rep.
+  { value: "confirmed", label: "Review found on Google (manager)" },
+  { value: "not_found", label: "No review found on Google (manager)" },
 ] as const;
+/** What a sales rep may record themselves. */
+export const REP_REVIEW_VALUES = ["not_asked", "asked"] as const;
 export type GoogleReviewStatus = (typeof GOOGLE_REVIEW_OPTIONS)[number]["value"];
 
 /** Standard result shape for server actions. */

@@ -27,9 +27,11 @@ export async function insertInteraction(
   // Staff can only record visits for themselves — they count towards their own scorecard.
   // (Also enforced by row-level security.)
   const employee_id = actor.role === "staff" ? (actor.employee_id ?? null) : i.employee_id;
+  // Only managers confirm Google reviews (Google Reviews page); a rep can record "asked" at most.
+  const google_review = actor.role === "staff" && (i.google_review === "confirmed" || i.google_review === "not_found") ? "asked" : i.google_review;
   return supabase
     .from("customer_interactions")
-    .insert({ ...i, employee_id, customer_id: customerId, created_by: actor.id, kpi_tracked: opts.kpiTracked ?? true })
+    .insert({ ...i, employee_id, google_review, customer_id: customerId, created_by: actor.id, kpi_tracked: opts.kpiTracked ?? true })
     .select("id")
     .single();
 }

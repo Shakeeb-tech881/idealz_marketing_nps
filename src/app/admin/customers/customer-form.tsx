@@ -13,7 +13,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { FormField } from "@/components/admin/form-field";
 import { Panel } from "@/components/admin/panel";
 import { interactionSchema, newCustomerSchema } from "@/lib/validation/customer";
-import { CUSTOMER_SOURCES, GOOGLE_REVIEW_OPTIONS, PRODUCT_CATEGORIES, SALES_STEPS, type Branch, type Employee } from "@/lib/types";
+import { CUSTOMER_SOURCES, GOOGLE_REVIEW_OPTIONS, PRODUCT_CATEGORIES, REP_REVIEW_VALUES, SALES_STEPS, type Branch, type Employee } from "@/lib/types";
 import { addInteractionAction, createCustomerAction } from "./actions";
 
 type FormIn = z.input<typeof newCustomerSchema>;
@@ -42,7 +42,10 @@ function SalesFields({
   errors,
   status,
   setValue,
+  staff = false,
 }: {
+  /** Sales reps can only record "asked"; managers confirm reviews on the Google Reviews page. */
+  staff?: boolean;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   register: any;
   errors: Record<string, { message?: string } | undefined>;
@@ -100,9 +103,9 @@ function SalesFields({
         </div>
         {errors.sales_steps?.message && <p className="mt-1 text-xs text-destructive">{errors.sales_steps.message}</p>}
       </fieldset>
-      <FormField label="Google review" htmlFor="google_review" error={errors.google_review?.message} hint="Ask every customer, happy or not. Google does not allow asking only happy customers or offering rewards for reviews." className="sm:max-w-sm">
+      <FormField label="Google review" htmlFor="google_review" error={errors.google_review?.message} hint="Ask every customer, happy or not (Google does not allow asking only happy customers or offering rewards). A manager confirms reviews on the Google Reviews page." className="sm:max-w-sm">
         <NativeSelect id="google_review" {...register("google_review")}>
-          {GOOGLE_REVIEW_OPTIONS.map((o) => (
+          {GOOGLE_REVIEW_OPTIONS.filter((o) => !staff || (REP_REVIEW_VALUES as readonly string[]).includes(o.value)).map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </NativeSelect>
@@ -242,7 +245,7 @@ export function NewCustomerForm({ branches, employees, defaultBranch, today, def
       </Panel>
       <Panel title="Purchase / visit" description="Each interaction can receive its own survey invitation.">
         <InteractionFields register={form.register} errors={errors} branches={branches} employees={employees} branchId={branchId} status={status} lockEmployee={lockEmployee} />
-        <SalesFields register={form.register} errors={errors} status={status} setValue={form.setValue} />
+        <SalesFields register={form.register} errors={errors} status={status} setValue={form.setValue} staff={lockEmployee} />
         <div className="mt-6 flex justify-end gap-2 border-t border-border pt-4">
           <Button type="button" variant="outline" onClick={() => router.back()}>Cancel</Button>
           <Button type="submit" disabled={form.formState.isSubmitting}>
@@ -282,7 +285,7 @@ export function AddInteractionForm({ customerId, branches, employees, defaultBra
   return (
     <form onSubmit={form.handleSubmit(onSubmit)} noValidate>
       <InteractionFields register={form.register} errors={errors} branches={branches} employees={employees} branchId={branchId} status={status} lockEmployee={lockEmployee} />
-      <SalesFields register={form.register} errors={errors} status={status} setValue={form.setValue} />
+      <SalesFields register={form.register} errors={errors} status={status} setValue={form.setValue} staff={lockEmployee} />
       <div className="mt-6 flex justify-end gap-2">
         <Button type="submit" disabled={form.formState.isSubmitting}>
           {form.formState.isSubmitting && <Loader2 className="animate-spin" data-icon="inline-start" />} Add interaction

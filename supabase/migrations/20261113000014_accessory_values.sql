@@ -70,7 +70,7 @@ language sql stable security invoker set search_path = public as $$
            count(conversion_days) as measured_conversions,
            round(avg(conversion_days)::numeric, 1) as avg_conversion_days,
            round(avg(cardinality(v.sales_steps))::numeric, 2) as avg_sales_steps,
-           count(*) filter (where v.google_review in ('asked', 'confirmed')) as reviews_asked,
+           count(*) filter (where v.google_review <> 'not_asked') as reviews_asked,
            count(*) filter (where v.google_review = 'confirmed') as reviews_confirmed
       from v group by 1
   )

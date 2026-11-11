@@ -43,7 +43,14 @@ tests/db/              database tests: migrations + RLS + submission run in PGli
 - Every table has Row Level Security. Branch managers and staff are scoped in the database, so analytics functions (security invoker) automatically aggregate only what the user may see.
 - SMS status is never overstated: “Sent” = accepted by the provider; “Delivered” only from a provider delivery report; “Opened” only when the survey page loads.
 - Employees are only ranked with at least the configured minimum sample; others are listed as “insufficient sample”.
-- **Rep Scorecard** (`/admin/scorecard`) grades each salesperson A+ to Fail from device sales (quantity), accessories by sales value in Rs. (commission ×1.5), conversion rate, Google reviews, sales steps and customer feedback. No targets: each rep is compared with the showroom average (average = 75). Reps with fewer than 10 tracked visits are flagged red as **Low activity** (not graded) for follow-up. Download as PDF from the page, or as PDF/Excel/CSV from Reports → Sales Rep Scorecard. Logic in `src/lib/kpi.ts`.
+- **Rep Scorecard** (`/admin/scorecard`) grades each salesperson A+ to Fail from customer feedback (35%), device sales (quantity), accessories by sales value in Rs. (commission ×1.5), conversion rate and Google reviews. Self-reported sales-step ticks are shown but not graded. No targets: each rep is compared with the showroom average (average = 75). Reps with fewer than 10 tracked visits are flagged red as **Low activity** (not graded) for follow-up. Download as PDF from the page, or as PDF/Excel/CSV from Reports → Sales Rep Scorecard. Logic in `src/lib/kpi.ts`.
+
+## Fair play on the Rep Scorecard
+
+- **Google reviews**: reps can only record "asked". Managers confirm on **Google Reviews** (`/admin/reviews`) whether a review was found; only confirmed reviews count (per working day). Enforced in the database.
+- **Conversion**: if a rep records fewer customers per working day than their colleagues' average, conversion is worked out as if they had served that average — leaving out walk-ins never helps. "Visits vs showroom" is shown (red below 60%).
+- Self-reported sales-step ticks are shown but not graded.
+- Upgrade an existing database with `scripts/upgrade-review-confirmation.sql`.
 
 ## Staff leave
 

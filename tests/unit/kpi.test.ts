@@ -33,8 +33,8 @@ describe("rep scorecard", () => {
   });
 
   test("unmeasurable KPIs are left out and the rest scale up", () => {
-    expect(weightedScore({ feedback: null, phones: 80, accessories: 80, conversion: 80, reviews: 80, process: 80 })).toBe(80);
-    expect(weightedScore({ feedback: null, phones: null, accessories: null, conversion: 80, reviews: 80, process: 80 })).toBeNull();
+    expect(weightedScore({ feedback: null, phones: 80, accessories: 80, conversion: 80, reviews: 80 })).toBe(80);
+    expect(weightedScore({ feedback: null, phones: null, accessories: null, conversion: 80, reviews: 80 })).toBeNull();
   });
 
   test("reps are compared within their showroom; too few visits are not graded", () => {
@@ -151,7 +151,8 @@ describe("staff leave", () => {
     const a = out.find((r) => r.name === "A")!;
     const b = out.find((r) => r.name === "B")!;
     expect(a.components.phones!).toBeGreaterThan(b.components.phones!);
-    expect(a.components.conversion).toBe(b.components.conversion);
+    // A served as many customers in fewer working days, so conversion never favours B.
+    expect(a.components.conversion!).toBeGreaterThanOrEqual(b.components.conversion!);
   });
 
   test("low activity reason mentions days on leave", () => {
@@ -207,5 +208,45 @@ describe("product is required when adding a customer or visit", () => {
     const contact = { full_name: "Nimal", mobile: "0771234567" };
     expect(newCustomerSchema.safeParse({ ...contact, ...base, purchase_status: "purchased" }).success).toBe(false);
     expect(interactionImportSchema.safeParse({ ...base, purchase_status: "purchased" }).success).toBe(true);
+  });
+});
+
+describe("self-reported sales steps", () => {
+  test("ticking every step does not change the grade", () => {
+    const [none] = scoreReps([rep({ name: "A", avgSalesSteps: 0 }), rep({ name: "B" })], { minFeedbackSample: 10 });
+    const [all] = scoreReps([rep({ name: "A", avgSalesSteps: 8 }), rep({ name: "B" })], { minFeedbackSample: 10 });
+    expect(all.score).toBe(none.score);
+    expect(Object.keys(all.components)).not.toContain("process");
+  });
+
+  test("customer feedback now weighs 35%", () => {
+    expect(KPI_WEIGHTS.feedback).toBe(35);
+  });
+});
+
+describe("fair play", () => {
+  test("leaving out walk-ins who didn't buy does not raise conversion", () => {
+    const out = scoreReps(
+      [
+        rep({ name: "Honest", visits: 20, sales: 10, periodDays: 30 }),
+        rep({ name: "Skipper", visits: 10, sales: 10, periodDays: 30 }),
+        rep({ name: "Third", visits: 20, sales: 10, periodDays: 30 }),
+      ],
+      { minFeedbackSample: 10 },
+    );
+    const h = out.find((r) => r.name === "Honest")!;
+    const s = out.find((r) => r.name === "Skipper")!;
+    expect(s.components.conversion!).toBeLessThanOrEqual(h.components.conversion!);
+    expect(s.recordingRate).toBe(0.5);
+    expect(h.recordingRate).toBe(1.33);
+  });
+
+  test("only manager-confirmed Google reviews count; 'asked' alone earns nothing", () => {
+    const out = scoreReps(
+      [rep({ name: "Asker", reviewsAsked: 20, reviewsConfirmed: 0 }), rep({ name: "Real", reviewsAsked: 5, reviewsConfirmed: 5 })],
+      { minFeedbackSample: 10 },
+    );
+    expect(out.find((r) => r.name === "Asker")!.components.reviews).toBe(0);
+    expect(out.find((r) => r.name === "Real")!.components.reviews!).toBeGreaterThan(0);
   });
 });

@@ -1,4 +1,3 @@
-import { SALES_STEPS } from "@/lib/types";
 
 /**
  * Sales rep scorecard.
@@ -11,13 +10,17 @@ import { SALES_STEPS } from "@/lib/types";
  * Customer feedback and sales steps are absolute (they don't depend on peers).
  */
 
+/**
+ * Graded KPIs. The "What the rep did" sales-step ticks are self-reported, so they
+ * are shown for information only and NOT graded; their former 10% went to
+ * customer feedback, which the customer answers.
+ */
 export const KPI_WEIGHTS = {
-  feedback: 25,
+  feedback: 35,
   phones: 25,
   accessories: 15,
   conversion: 15,
   reviews: 10,
-  process: 10,
 } as const;
 export type KpiKey = keyof typeof KPI_WEIGHTS;
 
@@ -27,7 +30,6 @@ export const KPI_LABELS: Record<KpiKey, string> = {
   accessories: "Accessories",
   conversion: "Conversion rate",
   reviews: "Google reviews",
-  process: "Sales steps",
 };
 
 export const GRADE_BANDS = [
@@ -109,6 +111,8 @@ export interface RepScore extends RepKpiTotals {
   penalty: number;
   grade: Grade | null;
   comparedWith: "branch" | "company" | null;
+  /** Visits recorded per working day ÷ colleagues' average (1 = same). Low values may mean visits are not being recorded. */
+  recordingRate: number | null;
 }
 
 export function gradeFor(score: number): Grade {
@@ -141,15 +145,29 @@ export function leavePenalty(unexcusedDays: number | undefined): number {
   return Math.min(MAX_LEAVE_PENALTY, LEAVE_PENALTY_PER_DAY * Math.max(0, unexcusedDays ?? 0));
 }
 
-/** Raw measures compared between peers. Sales volumes are per working day, so days off don't count against a rep. */
-function measures(r: RepKpiTotals) {
+/** Below this share of the showroom's visits per day, the scorecard flags possible under-recording. */
+export const LOW_RECORDING_RATE = 0.6;
+
+export function visitsPerDay(r: RepKpiTotals): number {
+  return r.visits / workingDays(r);
+}
+
+/**
+ * Raw measures compared between peers. Sales volumes are per working day, so days off don't count against a rep.
+ *
+ * Conversion: if a rep records fewer customers per working day than their colleagues' average,
+ * the rate is worked out as if they had served that average number — so leaving out walk-ins
+ * who didn't buy never raises it. (`othersVisitsPerDay` = average of the OTHER reps compared.)
+ * Reviews: only reviews a manager confirmed on Google count ("asked" is self-reported).
+ */
+function measures(r: RepKpiTotals, othersVisitsPerDay: number) {
   const days = workingDays(r);
+  const expectedVisits = Math.max(r.visits, othersVisitsPerDay * days);
   return {
     phones: (r.androidPhones + r.applePhones + r.otherDevices) / days,
     accessories: (COMMISSION_ACCESSORY_WEIGHT * r.commissionAccessoriesValue + r.nonCommissionAccessoriesValue) / days,
-    conversion: r.visits ? r.sales / r.visits : 0,
-    // A confirmed review counts fully; asked-but-not-confirmed counts half.
-    reviews: r.visits ? (r.reviewsConfirmed + 0.5 * (r.reviewsAsked - r.reviewsConfirmed)) / r.visits : 0,
+    conversion: expectedVisits > 0 ? r.sales / expectedVisits : 0,
+    reviews: r.reviewsConfirmed / days,
   };
 }
 
@@ -170,25 +188,28 @@ export function weightedScore(components: Record<KpiKey, number | null>): number
 export function scoreReps(rows: RepKpiTotals[], opts: { minFeedbackSample: number; minVisits?: number }): RepScore[] {
   const minVisits = opts.minVisits ?? MIN_GRADED_VISITS;
   const graded = rows.filter((r) => r.visits >= minVisits);
-  const avg = (list: RepKpiTotals[], key: keyof ReturnType<typeof measures>) =>
-    list.length ? list.reduce((s, r) => s + measures(r)[key], 0) / list.length : 0;
+  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
   return rows.map((r) => {
-    const empty: Record<KpiKey, number | null> = { feedback: null, phones: null, accessories: null, conversion: null, reviews: null, process: null };
+    const empty: Record<KpiKey, number | null> = { feedback: null, phones: null, accessories: null, conversion: null, reviews: null };
     const penalty = leavePenalty(r.unexcusedLeaveDays);
-    if (r.visits < minVisits) return { ...r, graded: false, status: "low_activity", components: empty, score: null, scoreBeforePenalty: null, penalty, grade: null, comparedWith: null };
+    if (r.visits < minVisits) return { ...r, graded: false, status: "low_activity", components: empty, score: null, scoreBeforePenalty: null, penalty, grade: null, comparedWith: null, recordingRate: null };
 
     const branchPeers = graded.filter((p) => p.branchId === r.branchId);
     const useBranch = branchPeers.length >= 2;
     const peers = useBranch ? branchPeers : graded;
-    const m = measures(r);
+    // Average visits per working day of the other reps in the comparison (0 when there are none).
+    const othersVpd = (x: RepKpiTotals) => mean(peers.filter((p) => p.employeeId !== x.employeeId).map(visitsPerDay));
+    const peerMeasures = peers.map((p) => measures(p, othersVpd(p)));
+    const avg = (key: keyof ReturnType<typeof measures>) => mean(peerMeasures.map((pm) => pm[key]));
+    const myOthersVpd = othersVpd(r);
+    const m = measures(r, myOthersVpd);
     const components: Record<KpiKey, number | null> = {
       feedback: feedbackScore(r, opts.minFeedbackSample),
-      phones: relativeScore(m.phones, avg(peers, "phones")),
-      accessories: relativeScore(m.accessories, avg(peers, "accessories")),
-      conversion: relativeScore(m.conversion, avg(peers, "conversion")),
-      reviews: relativeScore(m.reviews, avg(peers, "reviews")),
-      process: r.avgSalesSteps === null ? null : clamp((r.avgSalesSteps / SALES_STEPS.length) * 100),
+      phones: relativeScore(m.phones, avg("phones")),
+      accessories: relativeScore(m.accessories, avg("accessories")),
+      conversion: relativeScore(m.conversion, avg("conversion")),
+      reviews: relativeScore(m.reviews, avg("reviews")),
     };
     for (const k of Object.keys(components) as KpiKey[]) {
       if (components[k] !== null) components[k] = Math.round(components[k]! * 10) / 10;
@@ -205,6 +226,7 @@ export function scoreReps(rows: RepKpiTotals[], opts: { minFeedbackSample: numbe
       penalty,
       grade: score === null ? null : gradeFor(score),
       comparedWith: useBranch ? "branch" : "company",
+      recordingRate: myOthersVpd > 0 ? Math.round((visitsPerDay(r) / myOthersVpd) * 100) / 100 : null,
     };
   });
 }

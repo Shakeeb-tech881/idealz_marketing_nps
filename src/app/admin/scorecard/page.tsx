@@ -7,7 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { formatNps } from "@/lib/nps";
 import { formatLKR, formatRating } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_LABELS, KPI_WEIGHTS, LEAVE_PENALTY_PER_DAY, MAX_LEAVE_PENALTY, MIN_GRADED_VISITS, repStatusText, type Grade, type KpiKey, type RepScore } from "@/lib/kpi";
+import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_LABELS, KPI_WEIGHTS, LEAVE_PENALTY_PER_DAY, LOW_RECORDING_RATE, MAX_LEAVE_PENALTY, MIN_GRADED_VISITS, repStatusText, type Grade, type KpiKey, type RepScore } from "@/lib/kpi";
 import { SALES_STEPS } from "@/lib/types";
 import { getRepScorecard } from "@/server/services/analytics";
 import { getLookups } from "@/server/services/lookups";
@@ -99,10 +99,13 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
             <strong>No targets needed.</strong> Device sales, accessories, conversion rate and Google reviews compare each rep with the average rep in the same showroom for this period: matching the average scores {AVERAGE_SCORE}, a third above average scores 100. Showrooms with fewer than two graded reps compare against the whole company.
           </p>
           <p className="text-muted-foreground">
-            Weights: {KPI_KEYS.map((k) => `${KPI_LABELS[k]} ${KPI_WEIGHTS[k]}%`).join(" · ")}. Accessories are scored by sales value (Rs.); commission accessories count {COMMISSION_ACCESSORY_WEIGHT}× their value. Customer feedback = staff rating (60%) + NPS (40%), only with ≥ {settings.min_employee_sample} survey responses. Sales steps = share of the {SALES_STEPS.length} steps ticked per visit. A KPI that can&apos;t be measured is left out and the others scale up.
-          </p>
+            Weights: {KPI_KEYS.map((k) => `${KPI_LABELS[k]} ${KPI_WEIGHTS[k]}%`).join(" · ")}. Accessories are scored by sales value (Rs.); commission accessories count {COMMISSION_ACCESSORY_WEIGHT}× their value. Customer feedback = staff rating (60%) + NPS (40%), only with ≥ {settings.min_employee_sample} survey responses. The “What the rep did” ticks are self-reported, so they are shown below for information only and do not change the grade. </p>
           <p className="text-muted-foreground">
             Grades: {GRADE_BANDS.map((b) => (b.grade === "Fail" ? `Fail < ${GRADE_BANDS[GRADE_BANDS.length - 2].min}` : `${b.grade} ≥ ${b.min}`)).join(" · ")}. A rep with fewer than {MIN_GRADED_VISITS} tracked visits in the period is flagged <strong className="text-[#a52727]">Low activity</strong> instead of graded, so the manager can follow up. Only visits recorded with the scorecard fields count; older and imported visits are left out.
+          </p>
+          <p className="text-muted-foreground">
+            <strong className="text-foreground">Fair play:</strong> only Google reviews a manager confirmed (Google Reviews page) count. Conversion is scaled down if a rep records fewer
+            customers per working day than the showroom average (“Visits vs showroom”, red below {Math.round(LOW_RECORDING_RATE * 100)}%), so leaving out walk-ins who didn&apos;t buy doesn&apos;t help.
           </p>
           <p className="text-muted-foreground">
             <strong className="text-foreground">Leave</strong> (Staff Leave page): device sales and accessories are compared per working day, so days off don&apos;t count against a rep.
@@ -149,6 +152,7 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                           {KPI_LABELS[k]} <span className="font-normal text-muted-foreground">{KPI_WEIGHTS[k]}%</span>
                         </TableHead>
                       ))}
+                      <TableHead className="text-right whitespace-nowrap" title="Visits recorded per working day ÷ colleagues average">Visits vs showroom</TableHead>
                       <TableHead className="text-right whitespace-nowrap">Days off</TableHead>
                       <TableHead className="text-right whitespace-nowrap">Leave penalty</TableHead>
                       <TableHead className="pr-5">Compared with</TableHead>
@@ -164,6 +168,9 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                         {KPI_KEYS.map((k) => (
                           <TableCell key={k} className="text-right tabular">{fmt(r.components[k])}</TableCell>
                         ))}
+                        <TableCell className={`text-right tabular ${r.recordingRate !== null && r.recordingRate < LOW_RECORDING_RATE ? "font-bold text-[#a52727]" : ""}`} title={r.recordingRate !== null && r.recordingRate < LOW_RECORDING_RATE ? "Records far fewer customers than colleagues – check whether walk-ins are being recorded" : undefined}>
+                          {r.recordingRate === null ? "—" : `${Math.round(r.recordingRate * 100)}%`}
+                        </TableCell>
                         <TableCell className="text-right tabular" title={`Informed ${r.informedLeaveDays ?? 0} · sudden with proof ${r.excusedSuddenDays ?? 0} · sudden without proof ${r.unexcusedLeaveDays ?? 0}`}>{r.leaveDays ?? 0}</TableCell>
                         <TableCell className={`text-right tabular ${r.penalty ? "font-bold text-[#a52727]" : "text-muted-foreground"}`}>{r.penalty ? `−${r.penalty}` : "—"}</TableCell>
                         <TableCell className="pr-5 text-xs text-muted-foreground">{r.comparedWith === "branch" ? "Showroom" : "Company"}</TableCell>
@@ -232,8 +239,8 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                     <TableHead className="text-right whitespace-nowrap">Sudden, no proof</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Avg time with customer</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Avg days to buy</TableHead>
-                    <TableHead className="text-right whitespace-nowrap">Sales steps</TableHead>
-                    <TableHead className="text-right whitespace-nowrap">Reviews asked / left</TableHead>
+                    <TableHead className="text-right whitespace-nowrap" title="Self-reported by the rep – not graded">Steps ticked (info)</TableHead>
+                    <TableHead className="text-right whitespace-nowrap" title="Asked by the rep / confirmed on Google by a manager">Reviews asked / confirmed</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Staff rating</TableHead>
                     <TableHead className="pr-5 text-right">NPS</TableHead>
                   </TableRow>

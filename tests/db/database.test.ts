@@ -572,3 +572,52 @@ describe("accessory values upgrade", () => {
     expect(r).toBeGreaterThan(0);
   });
 });
+
+describe("Google reviews are confirmed by managers", () => {
+  let visit: string;
+  beforeAll(async () => {
+    const c = await one<{ id: string }>(`insert into customers (full_name, mobile) values ('Review Customer', '+94770000960') returning id`);
+    visit = (await one<{ id: string }>(
+      `insert into customer_interactions (customer_id, branch_id, employee_id, purchase_status, purchase_date, created_by, google_review)
+       values ($1, $2, $3, 'purchased', current_date, $4, 'asked') returning id`, [c.id, branchA, empA1, U.staffA])).id;
+  });
+
+  test("a sales rep cannot mark a review as found or not found", async () => {
+    await expect(as(db, "authenticated", U.staffA, (q) => q(`update customer_interactions set google_review = 'confirmed' where id = $1`, [visit])))
+      .rejects.toThrow(/Only a manager/);
+    await expect(as(db, "authenticated", U.staffA, (q) =>
+      q(`insert into customer_interactions (customer_id, branch_id, employee_id, purchase_status, created_by, google_review)
+         select customer_id, branch_id, employee_id, 'not_purchased', $2, 'not_found' from customer_interactions where id = $1`, [visit, U.staffA])))
+      .rejects.toThrow(/Only a manager/);
+  });
+
+  test("a branch manager confirms it; who and when are recorded; undo clears them", async () => {
+    await as(db, "authenticated", U.bmA, (q) => q(`update customer_interactions set google_review = 'confirmed' where id = $1`, [visit]));
+    const r = await one<{ google_review: string; review_checked_by: string; review_checked_at: string | null }>(
+      `select google_review, review_checked_by, review_checked_at from customer_interactions where id = $1`, [visit]);
+    expect(r).toMatchObject({ google_review: "confirmed", review_checked_by: U.bmA });
+    expect(r.review_checked_at).not.toBeNull();
+    // Editing other fields keeps the check.
+    await as(db, "authenticated", U.bmA, (q) => q(`update customer_interactions set notes = 'x' where id = $1`, [visit]));
+    expect((await one<{ review_checked_by: string }>(`select review_checked_by from customer_interactions where id = $1`, [visit])).review_checked_by).toBe(U.bmA);
+    await as(db, "authenticated", U.bmA, (q) => q(`update customer_interactions set google_review = 'asked' where id = $1`, [visit]));
+    expect((await one<{ review_checked_by: string | null }>(`select review_checked_by from customer_interactions where id = $1`, [visit])).review_checked_by).toBeNull();
+  });
+
+  test("another showroom's manager cannot confirm it; 'not found' still counts as asked", async () => {
+    const res = await as(db, "authenticated", U.bmB, (q) => q(`update customer_interactions set google_review = 'confirmed' where id = $1 returning id`, [visit]));
+    expect(res.rows).toHaveLength(0);
+    await as(db, "authenticated", U.mgmt, (q) => q(`update customer_interactions set google_review = 'not_found' where id = $1`, [visit]));
+    const k = await as(db, "authenticated", U.bmA, async (q) =>
+      (await q<{ reviews_asked: number; reviews_confirmed: number }>(
+        `select reviews_asked, reviews_confirmed from public.analytics_rep_kpis(current_date - 1, current_date + 1, null) where employee_id = $1`, [empA1])).rows[0]);
+    expect(Number(k.reviews_asked)).toBeGreaterThanOrEqual(1);
+  });
+
+  test("the upgrade script can be run again safely", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-review-confirmation.sql"), "utf8"));
+    expect((await one<{ google_review: string }>(`select google_review from customer_interactions where id = $1`, [visit])).google_review).toBe("not_found");
+  });
+});
