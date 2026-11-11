@@ -124,3 +124,38 @@ describe("customer form: browser check, then server check", () => {
     expect(newCustomerSchema.parse(blankForm)).toMatchObject({ email: null, invoice_number: null, notes: null, employee_id: null, product_model: null, visit_start: null });
   });
 });
+
+describe("staff leave", () => {
+  test("sudden leave without proof costs 5 points a day, at most 25, and can change the grade", () => {
+    const base = scoreReps([rep({ name: "A" }), rep({ name: "B" })], { minFeedbackSample: 10 })[0];
+    const [two] = scoreReps([rep({ name: "A", unexcusedLeaveDays: 2 }), rep({ name: "B" })], { minFeedbackSample: 10 });
+    expect(two.penalty).toBe(10);
+    expect(two.scoreBeforePenalty).toBe(base.score);
+    expect(two.score).toBeCloseTo(base.score! - 10, 5);
+    const [many] = scoreReps([rep({ name: "A", unexcusedLeaveDays: 9 }), rep({ name: "B" })], { minFeedbackSample: 10 });
+    expect(many.penalty).toBe(25);
+    expect(many.grade).not.toBe(base.grade);
+  });
+
+  test("informed leave and sudden leave with proof cost nothing", () => {
+    const [r] = scoreReps([rep({ name: "A", informedLeaveDays: 3, excusedSuddenDays: 2, leaveDays: 5 }), rep({ name: "B" })], { minFeedbackSample: 10 });
+    expect(r.penalty).toBe(0);
+  });
+
+  test("days off don't count against sales: compared per working day", () => {
+    // Same sales, but A was off 10 of 30 days → A sold more per working day.
+    const out = scoreReps(
+      [rep({ name: "A", periodDays: 30, leaveDays: 10 }), rep({ name: "B", periodDays: 30, leaveDays: 0 })],
+      { minFeedbackSample: 10 },
+    );
+    const a = out.find((r) => r.name === "A")!;
+    const b = out.find((r) => r.name === "B")!;
+    expect(a.components.phones!).toBeGreaterThan(b.components.phones!);
+    expect(a.components.conversion).toBe(b.components.conversion);
+  });
+
+  test("low activity reason mentions days on leave", () => {
+    const [r] = scoreReps([rep({ name: "A", visits: 4, leaveDays: 6 })], { minFeedbackSample: 10 });
+    expect(repStatusText(r)).toBe("Low activity: 4 tracked visits, needs 10 · 6 days on leave");
+  });
+});

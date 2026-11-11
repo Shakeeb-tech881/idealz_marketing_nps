@@ -304,14 +304,18 @@ export async function getComplaintThemesByBranch(sb: SupabaseClient, f: Analytic
  * the same period and showroom, scored and graded by src/lib/kpi.ts.
  */
 export async function getRepScorecard(sb: SupabaseClient, f: AnalyticsFilters, minFeedbackSample: number): Promise<RepScore[]> {
-  const [kpiRes, feedback] = await Promise.all([
+  const [kpiRes, feedback, leaveRes] = await Promise.all([
     sb.rpc("analytics_rep_kpis", { p_from: f.from, p_to: f.to, p_branch: f.branch }),
     getEmployeePerformance(sb, { ...f, employee: null, surveyType: null, category: null }, minFeedbackSample),
+    sb.rpc("analytics_rep_leave", { p_from: f.from, p_to: f.to, p_branch: f.branch }),
   ]);
   const rows = unwrap(kpiRes, "rep kpis") as Record<string, unknown>[];
   const fb = new Map(feedback.map((e) => [e.employeeId, e]));
+  const leave = new Map((unwrap(leaveRes, "rep leave") as Record<string, unknown>[]).map((l) => [String(l.employee_id), l]));
+  const periodDays = Math.max(1, Math.round((Date.parse(`${f.to}T00:00:00Z`) - Date.parse(`${f.from}T00:00:00Z`)) / 86_400_000) + 1);
   const totals: RepKpiTotals[] = rows.map((r) => {
     const e = fb.get(String(r.employee_id));
+    const l = leave.get(String(r.employee_id));
     return {
       employeeId: String(r.employee_id),
       name: String(r.employee_name),
@@ -335,6 +339,11 @@ export async function getRepScorecard(sb: SupabaseClient, f: AnalyticsFilters, m
       feedbackResponses: e?.nps.total ?? 0,
       avgStaffRating: e?.avgStaffRating ?? null,
       nps: e?.nps.nps ?? null,
+      periodDays,
+      informedLeaveDays: n(l?.informed_days),
+      excusedSuddenDays: n(l?.sudden_proof_days),
+      unexcusedLeaveDays: n(l?.sudden_no_proof_days),
+      leaveDays: n(l?.informed_days) + n(l?.sudden_proof_days) + n(l?.sudden_no_proof_days),
     };
   });
   return scoreReps(totals, { minFeedbackSample });

@@ -7,7 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { formatNps } from "@/lib/nps";
 import { formatRating } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_LABELS, KPI_WEIGHTS, MIN_GRADED_VISITS, repStatusText, type Grade, type KpiKey, type RepScore } from "@/lib/kpi";
+import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_LABELS, KPI_WEIGHTS, LEAVE_PENALTY_PER_DAY, MAX_LEAVE_PENALTY, MIN_GRADED_VISITS, repStatusText, type Grade, type KpiKey, type RepScore } from "@/lib/kpi";
 import { SALES_STEPS } from "@/lib/types";
 import { getRepScorecard } from "@/server/services/analytics";
 import { getLookups } from "@/server/services/lookups";
@@ -104,6 +104,10 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
           <p className="text-muted-foreground">
             Grades: {GRADE_BANDS.map((b) => (b.grade === "Fail" ? `Fail < ${GRADE_BANDS[GRADE_BANDS.length - 2].min}` : `${b.grade} ≥ ${b.min}`)).join(" · ")}. A rep with fewer than {MIN_GRADED_VISITS} tracked visits in the period is flagged <strong className="text-[#a52727]">Low activity</strong> instead of graded, so the manager can follow up. Only visits recorded with the scorecard fields count; older and imported visits are left out.
           </p>
+          <p className="text-muted-foreground">
+            <strong className="text-foreground">Leave</strong> (Staff Leave page): device sales and accessories are compared per working day, so days off don&apos;t count against a rep.
+            Sudden leave <strong className="text-[#a52727]">without proof</strong> takes {LEAVE_PENALTY_PER_DAY} points off the final score per day (at most {MAX_LEAVE_PENALTY}); informed leave and sudden leave with proof cost nothing.
+          </p>
         </div>
       </div>
 
@@ -145,6 +149,8 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                           {KPI_LABELS[k]} <span className="font-normal text-muted-foreground">{KPI_WEIGHTS[k]}%</span>
                         </TableHead>
                       ))}
+                      <TableHead className="text-right whitespace-nowrap">Days off</TableHead>
+                      <TableHead className="text-right whitespace-nowrap">Leave penalty</TableHead>
                       <TableHead className="pr-5">Compared with</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -154,10 +160,12 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                         <TableCell className="pl-5 tabular text-muted-foreground">{i + 1}</TableCell>
                         <RepCell r={r} />
                         <TableCell className="text-center"><GradeBadge grade={r.grade} /></TableCell>
-                        <TableCell className="text-right font-semibold tabular">{fmt(r.score, 1)}</TableCell>
+                        <TableCell className="text-right font-semibold tabular" title={r.penalty ? `${fmt(r.scoreBeforePenalty, 1)} before the leave penalty` : undefined}>{fmt(r.score, 1)}</TableCell>
                         {KPI_KEYS.map((k) => (
                           <TableCell key={k} className="text-right tabular">{fmt(r.components[k])}</TableCell>
                         ))}
+                        <TableCell className="text-right tabular" title={`Informed ${r.informedLeaveDays ?? 0} · sudden with proof ${r.excusedSuddenDays ?? 0} · sudden without proof ${r.unexcusedLeaveDays ?? 0}`}>{r.leaveDays ?? 0}</TableCell>
+                        <TableCell className={`text-right tabular ${r.penalty ? "font-bold text-[#a52727]" : "text-muted-foreground"}`}>{r.penalty ? `−${r.penalty}` : "—"}</TableCell>
                         <TableCell className="pr-5 text-xs text-muted-foreground">{r.comparedWith === "branch" ? "Showroom" : "Company"}</TableCell>
                       </TableRow>
                     ))}
@@ -220,6 +228,8 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                     <TableHead className="text-right">Other devices</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Commission acc.</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Non-comm. acc.</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Days off</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Sudden, no proof</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Avg time with customer</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Avg days to buy</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Sales steps</TableHead>
@@ -243,6 +253,8 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                       <TableCell className="text-right tabular">{r.otherDevices}</TableCell>
                       <TableCell className="text-right tabular">{r.commissionAccessories}</TableCell>
                       <TableCell className="text-right tabular">{r.nonCommissionAccessories}</TableCell>
+                      <TableCell className="text-right tabular">{r.leaveDays ?? 0}</TableCell>
+                      <TableCell className={`text-right tabular ${r.unexcusedLeaveDays ? "font-bold text-[#a52727]" : ""}`}>{r.unexcusedLeaveDays ?? 0}</TableCell>
                       <TableCell className="text-right tabular" title={`${r.timedVisits} visits with times recorded`}>{r.avgVisitMinutes === null ? "—" : `${Math.round(r.avgVisitMinutes)} min`}</TableCell>
                       <TableCell className="text-right tabular" title={`${r.measuredConversions} sales measured · 0 = bought on the first visit`}>{r.avgConversionDays === null ? "—" : `${r.avgConversionDays} d`}</TableCell>
                       <TableCell className="text-right tabular">{r.avgSalesSteps === null ? "—" : `${r.avgSalesSteps.toFixed(1)} / ${SALES_STEPS.length}`}</TableCell>

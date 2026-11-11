@@ -8,7 +8,7 @@ import { NON_PURCHASE_REASON_LABELS, SURVEY_TYPE_LABELS, type NonPurchaseReason,
 import { INVITATION_STATUS_LABELS, RESOLUTION_LABELS, type InvitationStatus, type Profile, type ResolutionStatus } from "@/lib/types";
 import { canSeeContactDetails } from "@/lib/auth";
 import { getBranchPerformance, getEmployeePerformance, getNonPurchaseReasons, getOverview, getRepScorecard, getResponseRateTrend, getTrend } from "@/server/services/analytics";
-import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_WEIGHTS, MIN_GRADED_VISITS, repStatusText, type KpiKey } from "@/lib/kpi";
+import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_WEIGHTS, LEAVE_PENALTY_PER_DAY, MAX_LEAVE_PENALTY, MIN_GRADED_VISITS, repStatusText, type KpiKey } from "@/lib/kpi";
 import { SALES_STEPS } from "@/lib/types";
 import { REPORT_TYPES, type ReportData, type ReportType } from "./definitions";
 import { describeInsightFilters, parseInsightFilters } from "@/lib/insights/filters";
@@ -209,6 +209,7 @@ export async function buildReport(
           { key: "comm", label: "Comm. acc." }, { key: "noncomm", label: "Non-comm. acc." },
           { key: "mins", label: "Avg min" }, { key: "days", label: "Days to buy" }, { key: "steps", label: `Avg steps /${SALES_STEPS.length}` },
           { key: "reviews", label: "Reviews asked/left" }, { key: "staff", label: "Staff rating" }, { key: "nps", label: "NPS" },
+          { key: "off", label: "Days off" }, { key: "unexcused", label: "Sudden, no proof" }, { key: "penalty", label: "Leave penalty" },
           { key: "status", label: "Note", width: 24 },
         ],
         rows: sorted.map((r) => ({
@@ -233,17 +234,22 @@ export async function buildReport(
           reviews: `${r.reviewsAsked}/${r.reviewsConfirmed}`,
           staff: r.avgStaffRating,
           nps: formatNps(r.nps),
+          off: r.leaveDays ?? 0,
+          unexcused: r.unexcusedLeaveDays ?? 0,
+          penalty: r.penalty ? -r.penalty : "",
           status:
             r.status === "low_activity"
               ? `${r.visits} visit${r.visits === 1 ? "" : "s"} (needs ${MIN_GRADED_VISITS})`
               : (repStatusText(r) ?? (r.comparedWith === "company" ? "vs company avg" : "")),
         })),
         rowTone: sorted.map((r) => (r.status === "low_activity" ? "danger" : null)),
+        pdfFontSize: 5.6,
         notes: [
           `KPI columns (with %) are 0-100 scores. `+
           `Grades: ${GRADE_BANDS.map((b) => (b.grade === "Fail" ? `Fail below ${GRADE_BANDS[GRADE_BANDS.length - 2].min}` : `${b.grade} ${b.min}+`)).join(", ")}. A blank KPI could not be measured: it is left out and the other weights scale up.`,
           `No targets: sales, accessories (commission x${COMMISSION_ACCESSORY_WEIGHT}), conversion and Google reviews compare each rep with the showroom average (average = ${AVERAGE_SCORE}, one third above = 100).`,
           `LOW ACTIVITY (red): fewer than ${MIN_GRADED_VISITS} visits recorded with the scorecard fields in this period - not graded; manager to follow up (leave, new joiner, or visits not recorded).`,
+          `LEAVE: device sales and accessories are compared per working day. Sudden leave without proof: -${LEAVE_PENALTY_PER_DAY} points per day on the score (max -${MAX_LEAVE_PENALTY}); informed leave and sudden leave with proof: no penalty.`,
           `Customer feedback counts only with ${minEmployeeSample}+ survey responses. Visits recorded before the scorecard was introduced, and bulk imports, are not counted.`,
         ],
       };

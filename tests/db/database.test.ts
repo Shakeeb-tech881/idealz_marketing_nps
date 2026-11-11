@@ -482,3 +482,54 @@ describe("customer insights and offers", () => {
     expect(n.n).toBe(3);
   });
 });
+
+describe("staff leave register", () => {
+  let empB: string;
+  beforeAll(async () => {
+    empB = (await one<{ id: string }>(`insert into employees (branch_id, full_name) values ($1, 'Kandy Rep') returning id`, [branchB])).id;
+  });
+  const record = (user: string, employee: string, date: string, type = "sudden", proof = false) =>
+    as(db, "authenticated", user, (q) =>
+      q(`insert into employee_leave (employee_id, branch_id, leave_date, leave_type, proof_received) values ($1, $2, $3, $4, $5)`, [employee, branchB, date, type, proof]));
+
+  test("branch managers record leave only for their showroom; the showroom comes from the employee", async () => {
+    await record(U.bmA, empA1, "2026-11-03");
+    const row = await one<{ branch_id: string; recorded_by: string }>(`select branch_id, recorded_by from employee_leave where employee_id = $1 and leave_date = '2026-11-03'`, [empA1]);
+    expect(row).toEqual({ branch_id: branchA, recorded_by: U.bmA });
+    await expect(record(U.bmA, empB, "2026-11-03")).rejects.toThrow(/row-level security/);
+    await record(U.mgmt, empB, "2026-11-03");
+  });
+
+  test("staff cannot record leave and only see their own", async () => {
+    await expect(record(U.staffA, empA1, "2026-11-04")).rejects.toThrow(/row-level security/);
+    await record(U.bmA, empA2, "2026-11-04", "informed");
+    const seen = await as(db, "authenticated", U.staffA, async (q) => (await q<{ employee_id: string }>(`select employee_id from employee_leave`)).rows);
+    expect(seen.every((r) => r.employee_id === empA1)).toBe(true);
+    expect(seen.length).toBeGreaterThan(0);
+  });
+
+  test("one row per rep per day; proof only for sudden leave", async () => {
+    await expect(record(U.bmA, empA1, "2026-11-03")).rejects.toThrow(/employee_leave_one_per_day/);
+    await expect(record(U.bmA, empA1, "2026-11-05", "informed", true)).rejects.toThrow(/employee_leave_proof_only_sudden/);
+  });
+
+  test("leave totals per rep for the scorecard", async () => {
+    await record(U.bmA, empA1, "2026-11-06", "sudden", true);
+    const rows = await as(db, "authenticated", U.bmA, async (q) =>
+      (await q<{ employee_id: string; informed_days: number; sudden_proof_days: number; sudden_no_proof_days: number }>(
+        `select * from public.analytics_rep_leave('2026-11-01', '2026-11-30', null)`)).rows);
+    const a1 = rows.find((r) => r.employee_id === empA1)!;
+    expect(a1).toMatchObject({ informed_days: 0, sudden_proof_days: 1, sudden_no_proof_days: 1 });
+    expect(rows.find((r) => r.employee_id === empB)).toBeUndefined(); // other showroom
+  });
+
+  test("the upgrade script can be run again safely", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    const before = await one<{ n: number }>(`select count(*)::int n from employee_leave`);
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-staff-leave.sql"), "utf8"));
+    const after = await one<{ n: number }>(`select count(*)::int n from employee_leave`);
+    expect(after.n).toBe(before.n);
+    expect(after.n).toBe(4);
+  });
+});

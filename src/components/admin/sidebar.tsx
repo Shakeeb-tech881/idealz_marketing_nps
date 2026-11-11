@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Award,
+  CalendarOff,
   ChartNoAxesCombined,
   FileDown,
   LayoutDashboard,
@@ -27,6 +28,7 @@ import type { NavItem } from "./nav-config";
 
 const ICONS: Record<string, LucideIcon> = {
   Award,
+  CalendarOff,
   LayoutDashboard,
   MessageSquareText,
   Users,

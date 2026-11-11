@@ -45,6 +45,12 @@ tests/db/              database tests: migrations + RLS + submission run in PGli
 - Employees are only ranked with at least the configured minimum sample; others are listed as “insufficient sample”.
 - **Rep Scorecard** (`/admin/scorecard`) grades each salesperson A+ to Fail from device sales, accessories (commission ×1.5), conversion rate, Google reviews, sales steps and customer feedback. No targets: each rep is compared with the showroom average (average = 75). Reps with fewer than 10 tracked visits are flagged red as **Low activity** (not graded) for follow-up. Download as PDF from the page, or as PDF/Excel/CSV from Reports → Sales Rep Scorecard. Logic in `src/lib/kpi.ts`.
 
+## Staff leave
+
+- **Staff Leave** (`/admin/leave`, managers): record days off per sales rep as *informed in advance*, *sudden – proof received* or *sudden – no proof* (tick + note; documents stay in the HR file).
+- Rep Scorecard: device sales and accessories are compared **per working day** (days off don't count against a rep); each sudden day **without proof** takes 5 points off the final score (max 25). Proof received later removes the penalty.
+- Upgrade an existing database with `scripts/upgrade-staff-leave.sql`.
+
 ## Customer Insights & Offers
 
 - **Customer Insights** (`/admin/insights`, managers): one row per customer with showrooms, models bought, purchases, latest NPS, staff rating and comment. Filter by model (e.g. “iPhone 15”), brand, category, showroom, last-purchase age, feedback group and offer permission; export to Excel/PDF.

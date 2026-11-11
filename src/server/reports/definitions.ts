@@ -29,4 +29,6 @@ export interface ReportData {
   notes?: string[];
   /** Per-row emphasis, same order as `rows`: "danger" prints the row in red (PDF / Excel). */
   rowTone?: ("danger" | null)[];
+  /** Smaller PDF text for very wide reports (default 7). */
+  pdfFontSize?: number;
 }

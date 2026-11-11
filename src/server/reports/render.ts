@@ -60,8 +60,8 @@ export function renderPdf(r: ReportData, company: string): Buffer {
     startY: 82,
     head: [r.columns.map((c) => c.label)],
     body: r.rows.map((row) => r.columns.map((c) => ascii(row[c.key] ?? null))),
-    styles: { fontSize: 7, cellPadding: 3, overflow: "linebreak" },
-    headStyles: { fillColor: [15, 39, 71], textColor: 255 },
+    styles: { fontSize: r.pdfFontSize ?? 7, cellPadding: (r.pdfFontSize ?? 7) < 7 ? 2 : 3, overflow: "linebreak" },
+    headStyles: { fillColor: [15, 39, 71], textColor: 255, fontSize: r.pdfFontSize ?? 7 },
     alternateRowStyles: { fillColor: [246, 247, 249] },
     margin: { left: 36, right: 36 },
     didParseCell: (data) => {
