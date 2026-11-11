@@ -22,6 +22,8 @@ export const NAV_SECTIONS: { title: string; items: NavItem[] }[] = [
     title: "Customers",
     items: [
       { href: "/admin/customers", label: "Customers", icon: "Users", roles: ALL },
+      { href: "/admin/insights", label: "Customer Insights", icon: "UsersRound", roles: MANAGERS },
+      { href: "/admin/offers", label: "Offers", icon: "Megaphone", roles: ["super_admin", "management"] },
       { href: "/admin/messaging", label: "Survey Messaging", icon: "Send", roles: ALL },
     ],
   },

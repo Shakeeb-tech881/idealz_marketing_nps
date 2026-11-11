@@ -53,7 +53,7 @@ async function templateBody(supabase: SupabaseClient, surveyType: SurveyType, te
   return data.body as string;
 }
 
-async function sentToday(supabase: SupabaseClient): Promise<number> {
+export async function sentToday(supabase: SupabaseClient): Promise<number> {
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
   const { count } = await supabase
     .from("message_logs")

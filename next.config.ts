@@ -19,6 +19,8 @@ const nextConfig: NextConfig = {
       // Survey links carry a secret token: never leak it via Referer, never cache.
       { source: "/survey/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "Cache-Control", value: "no-store" }] },
       { source: "/s/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "Cache-Control", value: "no-store" }] },
+      // Offer opt-out links carry a secret token too.
+      { source: "/u/:path*", headers: [{ key: "Referrer-Policy", value: "no-referrer" }, { key: "Cache-Control", value: "no-store" }] },
     ];
   },
   // Short survey links in the SMS (/s/<token>) show the survey page without a redirect.

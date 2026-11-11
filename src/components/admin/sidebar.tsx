@@ -7,6 +7,7 @@ import {
   ChartNoAxesCombined,
   FileDown,
   LayoutDashboard,
+  Megaphone,
   Menu,
   MessageSquareText,
   Send,
@@ -15,6 +16,7 @@ import {
   Store,
   UserRoundCheck,
   Users,
+  UsersRound,
   type LucideIcon,
 } from "lucide-react";
 import { useState } from "react";
@@ -28,6 +30,8 @@ const ICONS: Record<string, LucideIcon> = {
   LayoutDashboard,
   MessageSquareText,
   Users,
+  UsersRound,
+  Megaphone,
   Send,
   ChartNoAxesCombined,
   Store,

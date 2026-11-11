@@ -38,6 +38,7 @@ interface Row {
   customers: { full_name: string } | null;
   branches: { name: string } | null;
   survey_invitations: { id: string; status: InvitationStatus; survey_type: string } | null;
+  offer_campaigns: { name: string } | null;
 }
 
 export default async function HistoryPage({ searchParams }: PageProps<"/admin/messaging/history">) {
@@ -49,7 +50,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/admin/me
 
   let q = supabase
     .from("message_logs")
-    .select("id, created_at, provider, is_test, recipient, body_redacted, status, provider_status, sender_id, error_code, error_message, attempt, customers(full_name), branches(name), survey_invitations(id, status, survey_type)", { count: "exact" })
+    .select("id, created_at, provider, is_test, recipient, body_redacted, status, provider_status, sender_id, error_code, error_message, attempt, customers(full_name), branches(name), survey_invitations(id, status, survey_type), offer_campaigns(name)", { count: "exact" })
     .order("created_at", { ascending: false });
   if (status) q = q.eq("status", status);
   const start = (page - 1) * PAGE_SIZE;
@@ -109,7 +110,7 @@ export default async function HistoryPage({ searchParams }: PageProps<"/admin/me
                         {r.is_test && <span className="ml-2"><TestBadge /></span>}
                         {r.attempt > 1 && <span className="ml-2 text-xs text-muted-foreground">attempt {r.attempt}</span>}
                       </TableCell>
-                      <TableCell>{r.survey_invitations ? <InvitationStatusBadge status={r.survey_invitations.status} /> : "—"}</TableCell>
+                      <TableCell>{r.survey_invitations ? <InvitationStatusBadge status={r.survey_invitations.status} /> : r.offer_campaigns ? <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium">Offer: {r.offer_campaigns.name}</span> : "—"}</TableCell>
                       <TableCell className="max-w-72 text-xs whitespace-normal text-muted-foreground">
                         {r.status === "failed" ? <span className="text-destructive">{r.error_code}: {r.error_message}</span> : r.provider_status ?? "—"}
                       </TableCell>

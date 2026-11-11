@@ -397,3 +397,88 @@ describe("staff record visits only for themselves", () => {
     await expect(as(db, "authenticated", U.staffA, (q) => visit(q, empA2))).rejects.toThrow(/row-level security/);
   });
 });
+
+describe("customer insights and offers", () => {
+  const insights = (user: string, args: Record<string, unknown>) =>
+    as(db, "authenticated", user, async (q) =>
+      (await q<{ full_name: string; models: string[]; purchases: number; latest_nps_category: string | null; offers_opt_out: boolean; total_count: number }>(
+        `select * from public.customer_insights(p_q => $1, p_model => $2, p_brand => $3, p_last_purchase_before => $4::date, p_nps => $5, p_offers => $6, p_branch => $7::uuid, p_limit => 100)`,
+        [args.q ?? null, args.model ?? null, args.brand ?? null, args.before ?? null, args.nps ?? null, args.offers ?? null, args.branch ?? null])).rows);
+  let cOld: string;
+
+  beforeAll(async () => {
+    const mk = async (name: string, mobile: string, branch: string, model: string, daysAgo: number, optOut = false) => {
+      const c = await one<{ id: string }>(`insert into customers (full_name, mobile, offers_opt_out) values ($1, $2, $3) returning id`, [name, mobile, optOut]);
+      await db.query(
+        `insert into customer_interactions (customer_id, branch_id, purchase_status, interaction_date, purchase_date, product_model)
+         values ($1, $2, 'purchased', current_date - $3::int, current_date - $3::int, $4)`, [c.id, branch, daysAgo, model]);
+      return c.id;
+    };
+    cOld = await mk("Insight Apple Old", "+94770000801", branchA, "iPhone 13 Pro 128GB", 400);
+    await mk("Insight Android New", "+94770000802", branchB, "Samsung Galaxy S22", 30);
+    await mk("Insight Opted Out", "+94770000803", branchA, "iPhone 14", 500, true);
+    // A survey answer for the old Apple customer (visit today, non-purchased survey).
+    await fixtureInvitation({ branch: branchA, employee: null, purchased: false, mobile: "+94770000801", token: "ins1" });
+    expect(await submit("ins1", { nps_score: 3, staff_service_rating: 2, product_pricing_satisfaction: 2, non_purchase_reason: "price_too_high" })).toEqual({ ok: true });
+    // The fixture helper renames customers it reuses; restore the name.
+    await db.query(`update customers set full_name = 'Insight Apple Old' where mobile = '+94770000801'`);
+  });
+
+  test("filters by model, brand, last purchase age, feedback and offer permission", async () => {
+    const names = (rows: { full_name: string }[]) => rows.map((r) => r.full_name).filter((n) => n.startsWith("Insight")).sort();
+    expect(names(await insights(U.admin, { model: "iphone 1" }))).toEqual(["Insight Apple Old", "Insight Opted Out"]);
+    expect(names(await insights(U.admin, { brand: "android" }))).toEqual(["Insight Android New"]);
+    expect(names(await insights(U.admin, { brand: "apple", before: new Date(Date.now() - 365 * 864e5).toISOString().slice(0, 10) }))).toEqual(["Insight Apple Old", "Insight Opted Out"]);
+    expect(names(await insights(U.admin, { model: "iphone", offers: "allowed" }))).toEqual(["Insight Apple Old"]);
+    expect(names(await insights(U.admin, { q: "Insight", nps: "detractor" }))).toEqual(["Insight Apple Old"]);
+    const row = (await insights(U.admin, { q: "Insight Apple Old" }))[0];
+    expect(row).toMatchObject({ models: ["iPhone 13 Pro 128GB"], purchases: 1, latest_nps_category: "detractor", total_count: 1 });
+  });
+
+  test("row-level security: a branch manager only sees customers of their showroom", async () => {
+    const rows = await insights(U.bmB, { q: "Insight" });
+    expect(rows.map((r) => r.full_name)).toEqual(["Insight Android New"]);
+  });
+
+  test("offers: only Super Admin / Management can create, claim never hands out a customer twice", async () => {
+    await expect(as(db, "authenticated", U.bmA, (q) =>
+      q(`insert into offer_campaigns (name, body, created_by) values ('x', 'Hi {{optout_link}}', $1)`, [U.bmA]))).rejects.toThrow(/row-level security/);
+    await expect(db.query(`insert into offer_campaigns (name, body) values ('x', 'no stop link')`)).rejects.toThrow(/check/);
+    const camp = await as(db, "authenticated", U.mgmt, async (q) => {
+      const c = (await q<{ id: string }>(`insert into offer_campaigns (name, body, created_by, recipient_count) values ('Upgrade', 'Hi {{optout_link}}', $1, 3) returning id`, [U.mgmt])).rows[0].id;
+      for (const m of ["+94770000801", "+94770000802", "+94770000803"]) {
+        await q(`insert into offer_recipients (campaign_id, customer_id) select $1, id from customers where mobile = $2`, [c, m]);
+      }
+      return c;
+    });
+    const claim = (n: number) => as(db, "authenticated", U.mgmt, async (q) => (await q<{ customer_id: string }>(`select * from public.claim_offer_recipients($1, $2)`, [camp, n])).rows);
+    const first = await claim(2);
+    const second = await claim(5);
+    expect(first).toHaveLength(2);
+    expect(second).toHaveLength(1);
+    expect(new Set([...first, ...second].map((r) => r.customer_id)).size).toBe(3);
+    expect(await claim(5)).toHaveLength(0);
+    await expect(as(db, "authenticated", U.bmA, (q) => q(`select * from public.claim_offer_recipients($1, 5)`, [camp]))).rejects.toThrow(/not allowed/);
+    // A batch that crashed long ago is marked failed (never re-sent: the SMS may already have gone out).
+    await db.query(`update offer_recipients set claimed_at = now() - interval '1 hour' where campaign_id = $1 and customer_id = $2`, [camp, cOld]);
+    await claim(5);
+    const st = await one<{ status: string }>(`select status from offer_recipients where campaign_id = $1 and customer_id = $2`, [camp, cOld]);
+    expect(st.status).toBe("failed");
+  });
+
+  test("offer SMS logs can only be written by Super Admin / Management", async () => {
+    const camp = (await one<{ id: string }>(`select id from offer_campaigns limit 1`)).id;
+    await expect(as(db, "authenticated", U.bmA, (q) =>
+      q(`insert into message_logs (campaign_id, branch_id, provider, recipient, body_redacted, sent_by) values ($1, $2, 'mock', '+94770000801', 'x', $3)`, [camp, branchA, U.bmA]))).rejects.toThrow(/row-level security/);
+    await as(db, "authenticated", U.mgmt, (q) =>
+      q(`insert into message_logs (campaign_id, branch_id, provider, recipient, body_redacted, sent_by) values ($1, $2, 'mock', '+94770000801', 'x', $3)`, [camp, branchA, U.mgmt]));
+  });
+
+  test("the upgrade script can be run again safely", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-insights-offers.sql"), "utf8"));
+    const n = await one<{ n: number }>(`select count(*)::int n from offer_recipients`);
+    expect(n.n).toBe(3);
+  });
+});

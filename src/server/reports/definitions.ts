@@ -5,6 +5,7 @@ export const REPORT_TYPES = [
   { value: "branch_performance", label: "Branch Performance", description: "Invitations, response rate, NPS and staff rating for each branch." },
   { value: "employee_service", label: "Employee Service Quality", description: "Customer feedback linked to each employee, with sample-size flags." },
   { value: "rep_scorecard", label: "Sales Rep Scorecard", description: "A+ to Fail grade per salesperson with every KPI, sales counts and Low activity flags." },
+  { value: "customer_insights", label: "Customer Insights", description: "One row per customer: models bought, purchases, visits, latest feedback, staff rating and offer SMS status." },
   { value: "detractors", label: "Detractor Report", description: "All detractor responses (score 0–6) with follow-up status." },
   { value: "monthly_cx", label: "Monthly Customer Experience", description: "Month-by-month NPS, responses and response rate." },
   { value: "non_purchase_reasons", label: "Reasons for Not Purchasing", description: "Frequency of each reason customers gave for not purchasing." },

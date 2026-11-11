@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FormField } from "@/components/admin/form-field";
 import type { Branch, Employee } from "@/lib/types";
-import { setOptOutAction, updateContactAction } from "../actions";
+import { setOptOutAction, updateContactAction, setOffersOptOutAction } from "../actions";
 import { resendInvitationAction, sendInvitationsAction } from "../../messaging/actions";
 import { AddInteractionForm } from "../customer-form";
 import { TestSurveyLinkDialog } from "@/components/admin/test-survey-link";
@@ -173,5 +173,28 @@ export function AddInteractionDialog(props: { customerId: string; branches: Bran
         <AddInteractionForm {...props} onDone={() => setOpen(false)} />
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function OffersOptOutToggle({ customerId, optedOut }: { customerId: string; optedOut: boolean }) {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <Button
+      variant={optedOut ? "outline" : "ghost"}
+      size="sm"
+      disabled={pending}
+      onClick={() =>
+        start(async () => {
+          if (!optedOut && !confirm("Stop offer SMS for this customer? They will still get survey SMS.")) return;
+          const res = await setOffersOptOutAction(customerId, !optedOut);
+          if (!res.ok) return void toast.error(res.error);
+          toast.success(optedOut ? "Offer SMS allowed again" : "Offer SMS stopped for this customer");
+          router.refresh();
+        })
+      }
+    >
+      {optedOut ? "Allow offer SMS" : "Stop offer SMS"}
+    </Button>
   );
 }

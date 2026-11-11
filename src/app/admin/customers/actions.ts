@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { AuthorisationError, requireRole } from "@/lib/auth";
 import { addInteraction, createCustomerWithInteraction, setSmsOptOut, updateCustomerContact } from "@/server/services/customers";
 import { commitImport, validateImport } from "@/server/services/customer-import";
+import { setOffersOptOut } from "@/server/services/offers";
 import type { MappedRow } from "@/lib/import/fields";
 
 type Fail = { ok: false; error: string; fieldErrors?: Record<string, string[]> };
@@ -67,5 +68,14 @@ export async function commitImportAction(rows: MappedRow[]) {
     const data = await commitImport(actor, rows);
     revalidatePath("/admin/customers");
     return { ok: true as const, data };
+  });
+}
+
+export async function setOffersOptOutAction(customerId: string, optOut: boolean) {
+  return guard(async () => {
+    const actor = await requireRole();
+    const res = await setOffersOptOut(actor, customerId, optOut);
+    if (res.ok) revalidatePath(`/admin/customers/${customerId}`);
+    return res;
   });
 }

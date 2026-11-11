@@ -11,6 +11,8 @@ import { getBranchPerformance, getEmployeePerformance, getNonPurchaseReasons, ge
 import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_WEIGHTS, MIN_GRADED_VISITS, repStatusText, type KpiKey } from "@/lib/kpi";
 import { SALES_STEPS } from "@/lib/types";
 import { REPORT_TYPES, type ReportData, type ReportType } from "./definitions";
+import { describeInsightFilters, parseInsightFilters } from "@/lib/insights/filters";
+import { getAllCustomerInsights } from "@/server/services/insights";
 
 const MAX_ROWS = 20000;
 const PAGE = 1000;
@@ -61,7 +63,16 @@ function responsesQuery(sb: SupabaseClient, f: AnalyticsFilters) {
   return q;
 }
 
-export async function buildReport(sb: SupabaseClient, actor: Profile, type: ReportType, f: AnalyticsFilters, branchName: string | null, minEmployeeSample: number): Promise<ReportData> {
+export async function buildReport(
+  sb: SupabaseClient,
+  actor: Profile,
+  type: ReportType,
+  f: AnalyticsFilters,
+  branchName: string | null,
+  minEmployeeSample: number,
+  /** Raw query parameters, for reports with their own filters (Customer Insights). */
+  extra: Record<string, string> = {},
+): Promise<ReportData> {
   const meta = REPORT_TYPES.find((r) => r.value === type)!;
   const subtitle = `${formatDate(f.from)} – ${formatDate(f.to)} · ${branchName ?? "All accessible branches"}${f.surveyType ? ` · ${SURVEY_TYPE_LABELS[f.surveyType]} customers` : ""}${f.category ? ` · ${f.category}` : ""}`;
   const mobile = (m: string | null) => (canSeeContactDetails(actor) ? formatMobile(m) : maskMobile(m));
@@ -235,6 +246,41 @@ export async function buildReport(sb: SupabaseClient, actor: Profile, type: Repo
           `LOW ACTIVITY (red): fewer than ${MIN_GRADED_VISITS} visits recorded with the scorecard fields in this period - not graded; manager to follow up (leave, new joiner, or visits not recorded).`,
           `Customer feedback counts only with ${minEmployeeSample}+ survey responses. Visits recorded before the scorecard was introduced, and bulk imports, are not counted.`,
         ],
+      };
+    }
+    case "customer_insights": {
+      const inf = parseInsightFilters(extra);
+      const { rows, total } = await getAllCustomerInsights(sb, inf, MAX_ROWS);
+      return {
+        title: meta.label,
+        subtitle: `${describeInsightFilters(inf, branchName)} · ${total.toLocaleString()} customers`,
+        columns: [
+          { key: "customer", label: "Customer", width: 22 }, { key: "mobile", label: "Mobile", width: 14 }, { key: "showrooms", label: "Showrooms", width: 20 },
+          { key: "models", label: "Models bought", width: 30 }, { key: "purchases", label: "Purchases" }, { key: "visits", label: "Visits" },
+          { key: "first", label: "First visit", width: 12 }, { key: "last_purchase", label: "Last purchase", width: 12 },
+          { key: "surveys", label: "Surveys" }, { key: "nps", label: "Latest NPS" }, { key: "group", label: "NPS group" }, { key: "staff", label: "Avg staff rating" },
+          { key: "comment", label: "Latest comment", width: 40 }, { key: "offers", label: "Offer SMS" },
+        ],
+        rows: rows.map((r) => ({
+          customer: r.fullName,
+          mobile: mobile(r.mobile),
+          showrooms: r.branches.join(", "),
+          models: r.models.join(", "),
+          purchases: r.purchases,
+          visits: r.visits,
+          first: r.firstVisit ? formatDate(r.firstVisit) : "",
+          last_purchase: r.lastPurchase ? formatDate(r.lastPurchase) : "",
+          surveys: r.responses,
+          nps: r.latestNps,
+          group: r.latestNpsCategory ?? "",
+          staff: r.avgStaffRating,
+          comment: r.latestComment ?? "",
+          offers: r.smsOptOut || r.offersOptOut ? "Stopped" : r.mobile ? "Allowed" : "No mobile",
+        })),
+        notes: [
+          "Models bought, showrooms and counts include every visit you are allowed to see. NPS group: promoter 9–10, passive 7–8, detractor 0–6 (latest survey).",
+          total > MAX_ROWS ? `Only the first ${MAX_ROWS.toLocaleString()} customers are included – narrow the filters.` : "",
+        ].filter(Boolean),
       };
     }
     case "monthly_cx": {

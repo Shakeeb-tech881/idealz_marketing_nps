@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
       const { data } = await supabase.from("branches").select("name").eq("id", actor.branch_id).maybeSingle();
       branchName = data?.name ?? null;
     }
-    const report = await buildReport(supabase, actor, type, filters, branchName, settings.min_employee_sample);
+    const report = await buildReport(supabase, actor, type, filters, branchName, settings.min_employee_sample, sp);
     await supabase.rpc("log_audit", {
       p_action: "report.exported",
       p_entity_type: "report",
