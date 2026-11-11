@@ -60,7 +60,7 @@ const steps = z.preprocess(
   z.array(z.enum(stepValues)).max(stepValues.length),
 );
 
-export const interactionSchema = z
+const interactionFields = z
   .object({
     branch_id: z.uuid("Select a branch"),
     employee_id: z.union([blank, z.uuid()]).optional().transform((v) => (v ? v : null)),
@@ -86,9 +86,27 @@ export const interactionSchema = z
     sales_steps: steps.default([]),
     google_review: z.enum(reviewValues).default("not_asked"),
   })
+
+/**
+ * requireProduct: the Add customer / New visit forms must say which product
+ * (category + model) was bought or asked about — it is how brands and models
+ * are analysed. Bulk imports stay lenient so POS files with gaps still load.
+ */
+function buildInteractionSchema(requireProduct: boolean) {
+  return interactionFields
   .superRefine((v, ctx) => {
     if (v.visit_start && v.visit_end && v.visit_end <= v.visit_start) {
       ctx.addIssue({ code: "custom", path: ["visit_end"], message: "End time must be after the start time" });
+    }
+    if (requireProduct) {
+      if (!v.product_category) ctx.addIssue({ code: "custom", path: ["product_category"], message: "Choose the product category" });
+      if (!v.product_model || v.product_model.trim().length < 2) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["product_model"],
+          message: v.purchase_status === "purchased" ? "Enter the product / model bought, e.g. iPhone 16 Pro 256GB" : "Enter the product / model they asked about",
+        });
+      }
     }
   })
   .transform((v) => {
@@ -109,6 +127,12 @@ export const interactionSchema = z
           non_commission_accessories_value: 0,
         };
   });
+}
+
+/** Add customer / New visit (product category and model required). */
+export const interactionSchema = buildInteractionSchema(true);
+/** Bulk import from Excel/CSV (product optional). */
+export const interactionImportSchema = buildInteractionSchema(false);
 
 export const newCustomerSchema = customerContactSchema.and(interactionSchema);
 

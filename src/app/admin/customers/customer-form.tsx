@@ -181,15 +181,15 @@ function InteractionFields({
           <Input id="purchase_date" type="date" {...register("purchase_date")} />
         </FormField>
       )}
-      <FormField label="Product category" htmlFor="product_category" error={errors.product_category?.message}>
+      <FormField label={status === "purchased" ? "Product category" : "Product category asked about"} htmlFor="product_category" required error={errors.product_category?.message}>
         <NativeSelect id="product_category" {...register("product_category")}>
-          <option value="">Not specified</option>
+          <option value="">Choose…</option>
           {PRODUCT_CATEGORIES.map((c) => (
             <option key={c} value={c}>{c}</option>
           ))}
         </NativeSelect>
       </FormField>
-      <FormField label="Product / model" htmlFor="product_model" error={errors.product_model?.message}>
+      <FormField label={status === "purchased" ? "Product / model" : "Product / model asked about"} htmlFor="product_model" required error={errors.product_model?.message} hint="Brand + model, e.g. Samsung Galaxy S25 Ultra">
         <Input id="product_model" placeholder="e.g. iPhone 16 Pro 256GB" {...register("product_model")} />
       </FormField>
       {status === "purchased" && (

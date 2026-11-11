@@ -70,7 +70,7 @@ describe("phone numbers", () => {
 });
 
 describe("customer form validation", () => {
-  const base = { full_name: "Nimal", mobile: "0771234567", email: "", branch_id: "6f1c1d1e-2b3a-4c5d-8e9f-0a1b2c3d4e5f", employee_id: "", interaction_date: "2026-11-01", purchase_date: "", product_category: "", product_model: "", invoice_number: "INV-1", source: "walk_in", notes: "" };
+  const base = { full_name: "Nimal", mobile: "0771234567", email: "", branch_id: "6f1c1d1e-2b3a-4c5d-8e9f-0a1b2c3d4e5f", employee_id: "", interaction_date: "2026-11-01", purchase_date: "", product_category: "Smartphones", product_model: "iPhone 16", invoice_number: "INV-1", source: "walk_in", notes: "" };
   test("purchased defaults purchase date to visit date", () => {
     const r = newCustomerSchema.parse({ ...base, purchase_status: "purchased" });
     expect(r.purchase_date).toBe("2026-11-01");

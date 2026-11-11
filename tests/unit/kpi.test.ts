@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { feedbackScore, gradeFor, repStatusText, KPI_WEIGHTS, relativeScore, scoreReps, weightedScore, type RepKpiTotals } from "@/lib/kpi";
-import { interactionSchema, newCustomerSchema } from "@/lib/validation/customer";
+import { interactionImportSchema, interactionSchema, newCustomerSchema } from "@/lib/validation/customer";
 
 const rep = (over: Partial<RepKpiTotals>): RepKpiTotals => ({
   employeeId: over.name ?? "x", name: "x", branchId: "b1", branchName: "Prime", isActive: true,
@@ -67,7 +67,7 @@ describe("rep scorecard", () => {
 });
 
 describe("visit form scorecard fields", () => {
-  const base = { branch_id: "6f1c2a8e-1d2b-4c3d-9e4f-5a6b7c8d9e0f", purchase_status: "purchased", interaction_date: "2026-11-09" };
+  const base = { branch_id: "6f1c2a8e-1d2b-4c3d-9e4f-5a6b7c8d9e0f", purchase_status: "purchased", interaction_date: "2026-11-09", product_category: "Smartphones", product_model: "iPhone 16" };
 
   test("blank counts become 0 and checkbox values are normalised", () => {
     const v = interactionSchema.parse({ ...base, android_phones: "", apple_phones: "2", sales_steps: "greeted", visit_start: "10:05", visit_end: "10:40" });
@@ -100,7 +100,7 @@ describe("customer form: browser check, then server check", () => {
   // Exactly what the Add customer form holds when only the required fields are filled.
   const blankForm = {
     full_name: "Nimal Perera", mobile: "077 123 4567", email: "", branch_id: "6f1c2a8e-1d2b-4c3d-9e4f-5a6b7c8d9e0f", employee_id: "",
-    purchase_status: "purchased", interaction_date: "2026-11-09", purchase_date: "", product_category: "", product_model: "",
+    purchase_status: "purchased", interaction_date: "2026-11-09", purchase_date: "", product_category: "Smartphones", product_model: "iPhone 16 Pro",
     invoice_number: "", source: "walk_in", notes: "",
     android_phones: "0", apple_phones: "", other_devices: 0, commission_accessories: 0, non_commission_accessories: 0,
     visit_start: "", visit_end: "", sales_steps: false, google_review: "not_asked",
@@ -121,7 +121,7 @@ describe("customer form: browser check, then server check", () => {
   });
 
   test("blank optional fields are saved as empty", () => {
-    expect(newCustomerSchema.parse(blankForm)).toMatchObject({ email: null, invoice_number: null, notes: null, employee_id: null, product_model: null, visit_start: null });
+    expect(newCustomerSchema.parse(blankForm)).toMatchObject({ email: null, invoice_number: null, notes: null, employee_id: null, visit_start: null });
   });
 });
 
@@ -162,7 +162,7 @@ describe("staff leave", () => {
 
 describe("accessories by sales value", () => {
   test("the form takes rupee amounts (commas allowed, blank = 0)", () => {
-    const base = { branch_id: "6f1c2a8e-1d2b-4c3d-9e4f-5a6b7c8d9e0f", purchase_status: "purchased", interaction_date: "2026-11-13" };
+    const base = { branch_id: "6f1c2a8e-1d2b-4c3d-9e4f-5a6b7c8d9e0f", purchase_status: "purchased", interaction_date: "2026-11-13", product_category: "Smartphones", product_model: "Galaxy S25" };
     expect(interactionSchema.parse({ ...base, commission_accessories_value: "12,500", non_commission_accessories_value: "" })).toMatchObject({
       commission_accessories_value: 12500, non_commission_accessories_value: 0,
     });
@@ -183,5 +183,29 @@ describe("accessories by sales value", () => {
     const c = out.find((r) => r.name === "Comm")!;
     const n = out.find((r) => r.name === "NonComm")!;
     expect(c.components.accessories!).toBeGreaterThan(n.components.accessories!);
+  });
+});
+
+describe("product is required when adding a customer or visit", () => {
+  const base = { branch_id: "6f1c2a8e-1d2b-4c3d-9e4f-5a6b7c8d9e0f", interaction_date: "2026-11-13" };
+  const issues = (r: { success: boolean; error?: { issues: { path: PropertyKey[]; message: string }[] } }) =>
+    Object.fromEntries((r.error?.issues ?? []).map((i) => [String(i.path[0]), i.message]));
+
+  test("purchase without category or model is rejected with clear messages", () => {
+    const r = interactionSchema.safeParse({ ...base, purchase_status: "purchased", product_category: "", product_model: " " });
+    expect(r.success).toBe(false);
+    expect(issues(r)).toMatchObject({ product_category: "Choose the product category", product_model: expect.stringMatching(/model bought/) });
+  });
+
+  test("a visit without a purchase needs the product asked about", () => {
+    const r = interactionSchema.safeParse({ ...base, purchase_status: "not_purchased", product_category: "Smartphones" });
+    expect(issues(r)).toEqual({ product_model: "Enter the product / model they asked about" });
+    expect(interactionSchema.safeParse({ ...base, purchase_status: "not_purchased", product_category: "Smartphones", product_model: "Pixel 9" }).success).toBe(true);
+  });
+
+  test("the add-customer form enforces it too; Excel/CSV imports stay lenient", () => {
+    const contact = { full_name: "Nimal", mobile: "0771234567" };
+    expect(newCustomerSchema.safeParse({ ...contact, ...base, purchase_status: "purchased" }).success).toBe(false);
+    expect(interactionImportSchema.safeParse({ ...base, purchase_status: "purchased" }).success).toBe(true);
   });
 });

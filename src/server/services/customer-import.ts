@@ -1,6 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { customerContactSchema, interactionSchema } from "@/lib/validation/customer";
+import { customerContactSchema, interactionImportSchema } from "@/lib/validation/customer";
 import { MAX_IMPORT_ROWS, parseDate, parsePurchaseStatus, parseSource, type MappedRow } from "@/lib/import/fields";
 import { todayColombo } from "@/lib/format";
 import type { Branch, Employee, Profile } from "@/lib/types";
@@ -17,7 +17,7 @@ export interface ImportRowResult {
 interface Prepared {
   result: ImportRowResult;
   contact?: { full_name: string; mobile: string; email: string | null };
-  interaction?: ReturnType<typeof interactionSchema.parse>;
+  interaction?: ReturnType<typeof interactionImportSchema.parse>;
 }
 
 async function prepare(actor: Profile, rows: MappedRow[]): Promise<Prepared[]> {
@@ -72,7 +72,7 @@ async function prepare(actor: Profile, rows: MappedRow[]): Promise<Prepared[]> {
 
     let interaction: Prepared["interaction"];
     if (messages.length === 0 && branch && status) {
-      const ip = interactionSchema.safeParse({
+      const ip = interactionImportSchema.safeParse({
         branch_id: branch.id,
         employee_id: employeeId ?? "",
         purchase_status: status,
