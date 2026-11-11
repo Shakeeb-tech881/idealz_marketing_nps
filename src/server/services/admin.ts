@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { serverEnv } from "@/lib/env";
 import { generateTemporaryPassword } from "@/lib/temp-password";
+import { settingsRows } from "@/lib/settings-values";
 import type { Profile } from "@/lib/types";
 import { friendlyDbError } from "./customers";
 
@@ -203,7 +204,7 @@ export async function saveSettings(actor: Profile, raw: unknown) {
   const parsed = settingsSchema.safeParse(raw);
   if (!parsed.success) return { ok: false as const, error: "Please correct the highlighted fields.", fieldErrors: parsed.error.flatten().fieldErrors as Record<string, string[]> };
   const supabase = await createClient();
-  const rows = Object.entries(parsed.data).map(([key, value]) => ({ key, value, updated_by: actor.id }));
+  const rows = settingsRows(parsed.data, actor.id);
   const { error } = await supabase.from("system_settings").upsert(rows, { onConflict: "key" });
   if (error) return { ok: false as const, error: friendlyDbError(error) };
   await supabase.rpc("log_audit", { p_action: "settings.updated", p_entity_type: "system_settings", p_entity_id: null, p_details: parsed.data });

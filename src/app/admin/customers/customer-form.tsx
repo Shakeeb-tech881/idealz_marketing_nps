@@ -28,8 +28,12 @@ const SALES_COUNTS = [
   { name: "android_phones", label: "Android phones" },
   { name: "apple_phones", label: "Apple iPhones" },
   { name: "other_devices", label: "Other devices", hint: "Tablets, laptops, watches…" },
-  { name: "commission_accessories", label: "Commission accessories" },
-  { name: "non_commission_accessories", label: "Non-commission accessories" },
+] as const;
+
+/** Accessories are recorded as the sales value in rupees, not a count. */
+const SALES_VALUES = [
+  { name: "commission_accessories_value", label: "Commission accessories (Rs.)" },
+  { name: "non_commission_accessories_value", label: "Non-commission accessories (Rs.)" },
 ] as const;
 
 /** Rep scorecard fields: what was sold, time with the customer, sales steps, Google review. */
@@ -60,16 +64,25 @@ function SalesFields({
     <div className="mt-6 space-y-4 border-t border-border pt-5">
       <div>
         <p className="text-sm font-medium">Sales rep scorecard</p>
-        <p className="text-xs text-muted-foreground">Used to grade the salesperson. Leave counts at 0 if nothing was sold.</p>
+        <p className="text-xs text-muted-foreground">Used to grade the salesperson. Phones and devices: how many. Accessories: total sales value in rupees. Leave 0 if nothing was sold.</p>
       </div>
       {status === "purchased" && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          {SALES_COUNTS.map((f) => (
-            <FormField key={f.name} label={f.label} htmlFor={f.name} error={errors[f.name]?.message} hint={"hint" in f ? f.hint : undefined}>
-              <Input id={f.name} type="number" inputMode="numeric" min={0} step={1} {...register(f.name)} />
-            </FormField>
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            {SALES_COUNTS.map((f) => (
+              <FormField key={f.name} label={f.label} htmlFor={f.name} error={errors[f.name]?.message} hint={"hint" in f ? f.hint : "Quantity"}>
+                <Input id={f.name} type="number" inputMode="numeric" min={0} step={1} {...register(f.name)} />
+              </FormField>
+            ))}
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {SALES_VALUES.map((f) => (
+              <FormField key={f.name} label={f.label} htmlFor={f.name} error={errors[f.name]?.message} hint="Total value sold on this bill, e.g. 12500">
+                <Input id={f.name} type="number" inputMode="decimal" min={0} step="any" {...register(f.name)} />
+              </FormField>
+            ))}
+          </div>
+        </>
       )}
       <div className="grid gap-4 sm:grid-cols-2">
         {timeField("visit_start", "Time customer was first served")}
@@ -195,7 +208,7 @@ export function NewCustomerForm({ branches, employees, defaultBranch, today, def
   const router = useRouter();
   const form = useForm<FormIn, unknown, FormOut>({
     resolver: zodResolver(newCustomerSchema),
-    defaultValues: { full_name: "", mobile: "", email: "", branch_id: defaultBranch ?? "", employee_id: defaultEmployee ?? "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
+    defaultValues: { full_name: "", mobile: "", email: "", branch_id: defaultBranch ?? "", employee_id: defaultEmployee ?? "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, commission_accessories_value: 0, non_commission_accessories_value: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
   });
   const branchId = useWatch({ control: form.control, name: "branch_id" }) as string;
   const status = useWatch({ control: form.control, name: "purchase_status" }) as string;
@@ -248,7 +261,7 @@ export function AddInteractionForm({ customerId, branches, employees, defaultBra
   const router = useRouter();
   const form = useForm<IIn, unknown, IOut>({
     resolver: zodResolver(interactionSchema),
-    defaultValues: { branch_id: defaultBranch ?? "", employee_id: defaultEmployee ?? "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
+    defaultValues: { branch_id: defaultBranch ?? "", employee_id: defaultEmployee ?? "", purchase_status: "purchased", interaction_date: today, purchase_date: "", product_category: "", product_model: "", invoice_number: "", source: "walk_in", notes: "", android_phones: 0, apple_phones: 0, other_devices: 0, commission_accessories: 0, non_commission_accessories: 0, commission_accessories_value: 0, non_commission_accessories_value: 0, visit_start: "", visit_end: "", sales_steps: [], google_review: "not_asked" },
   });
   const branchId = useWatch({ control: form.control, name: "branch_id" }) as string;
   const status = useWatch({ control: form.control, name: "purchase_status" }) as string;

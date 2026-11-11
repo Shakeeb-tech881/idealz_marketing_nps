@@ -4,13 +4,13 @@ import { expect, test, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 vi.mock("@/server/services/analytics", async () => {
   const { scoreReps } = await import("@/lib/kpi");
-  const rep = (o: Record<string, unknown>) => ({ employeeId: String(o.name), name: "x", branchId: "b1", branchName: "iDealz Prime", isActive: true, visits: 20, sales: 10, androidPhones: 5, applePhones: 5, otherDevices: 1, commissionAccessories: 4, nonCommissionAccessories: 4, timedVisits: 20, avgVisitMinutes: 25, measuredConversions: 10, avgConversionDays: 1.5, avgSalesSteps: 6, reviewsAsked: 10, reviewsConfirmed: 4, feedbackResponses: 12, avgStaffRating: 4.5, nps: 60, ...o });
+  const rep = (o: Record<string, unknown>) => ({ employeeId: String(o.name), name: "x", branchId: "b1", branchName: "iDealz Prime", isActive: true, visits: 20, sales: 10, androidPhones: 5, applePhones: 5, otherDevices: 1, commissionAccessoriesValue: 8000, nonCommissionAccessoriesValue: 6000, timedVisits: 20, avgVisitMinutes: 25, measuredConversions: 10, avgConversionDays: 1.5, avgSalesSteps: 6, reviewsAsked: 10, reviewsConfirmed: 4, feedbackResponses: 12, avgStaffRating: 4.5, nps: 60, ...o });
   return { getRepScorecard: async () => scoreReps([
-    rep({ name: "Kasun Perera", androidPhones: 10, applePhones: 9, commissionAccessories: 12, sales: 15, reviewsConfirmed: 9, reviewsAsked: 15, avgSalesSteps: 7.5 }),
+    rep({ name: "Kasun Perera", androidPhones: 10, applePhones: 9, commissionAccessoriesValue: 24000, sales: 15, reviewsConfirmed: 9, reviewsAsked: 15, avgSalesSteps: 7.5 }),
     rep({ name: "Nimali Silva" }),
-    rep({ name: "Ruwan Fernando", androidPhones: 1, applePhones: 0, commissionAccessories: 0, nonCommissionAccessories: 1, sales: 2, reviewsAsked: 0, reviewsConfirmed: 0, avgSalesSteps: 2, avgStaffRating: 2.5, nps: -40 }),
-    rep({ name: "Ishara Jayasinghe", visits: 4, sales: 1, androidPhones: 1, applePhones: 0, otherDevices: 0, commissionAccessories: 1, nonCommissionAccessories: 0, reviewsAsked: 2, reviewsConfirmed: 1, avgSalesSteps: 5 }),
-    rep({ name: "Dilan Kumara", visits: 0, sales: 0, androidPhones: 0, applePhones: 0, otherDevices: 0, commissionAccessories: 0, nonCommissionAccessories: 0, reviewsAsked: 0, reviewsConfirmed: 0, avgSalesSteps: null, avgVisitMinutes: null, avgConversionDays: null, avgStaffRating: null, nps: null, feedbackResponses: 0, branchName: "iSeven Mobiles", branchId: "b2" }),
+    rep({ name: "Ruwan Fernando", androidPhones: 1, applePhones: 0, commissionAccessoriesValue: 0, nonCommissionAccessoriesValue: 1500, sales: 2, reviewsAsked: 0, reviewsConfirmed: 0, avgSalesSteps: 2, avgStaffRating: 2.5, nps: -40 }),
+    rep({ name: "Ishara Jayasinghe", visits: 4, sales: 1, androidPhones: 1, applePhones: 0, otherDevices: 0, commissionAccessoriesValue: 2000, nonCommissionAccessoriesValue: 0, reviewsAsked: 2, reviewsConfirmed: 1, avgSalesSteps: 5 }),
+    rep({ name: "Dilan Kumara", visits: 0, sales: 0, androidPhones: 0, applePhones: 0, otherDevices: 0, commissionAccessoriesValue: 0, nonCommissionAccessoriesValue: 0, reviewsAsked: 0, reviewsConfirmed: 0, avgSalesSteps: null, avgVisitMinutes: null, avgConversionDays: null, avgStaffRating: null, nps: null, feedbackResponses: 0, branchName: "iSeven Mobiles", branchId: "b2" }),
   ] as never, { minFeedbackSample: 10 }) };
 });
 test("scorecard report: KPI scores and raw counts stay in their own columns; low activity is flagged red", async () => {

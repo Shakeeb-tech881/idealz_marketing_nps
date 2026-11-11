@@ -302,6 +302,8 @@ describe("sales rep scorecard", () => {
     const ins = (cols: string, vals: string) =>
       db.query(`insert into customer_interactions (customer_id, branch_id, purchase_status, ${cols}) values ($1, $2, ${vals})`, [c.id, branchA]);
     await expect(ins("apple_phones", "'not_purchased', 1")).rejects.toThrow(/interactions_sales_need_purchase/);
+    await expect(ins("commission_accessories_value", "'not_purchased', 500")).rejects.toThrow(/interactions_sales_need_purchase/);
+    await expect(ins("non_commission_accessories_value", "'purchased', -1")).rejects.toThrow(/interactions_accessory_values/);
     await expect(ins("apple_phones", "'purchased', -1")).rejects.toThrow(/interactions_sales_counts/);
     await expect(ins("visit_start, visit_end", "'not_purchased', '11:00', '10:00'")).rejects.toThrow(/interactions_visit_time/);
     await expect(ins("sales_steps", "'not_purchased', array['bribed']")).rejects.toThrow(/interactions_sales_steps/);
@@ -317,16 +319,18 @@ describe("sales rep scorecard", () => {
        values ($1, $2, $3, 'not_purchased', current_date - 3, array['greeted','demo_given'], 'asked')`, [c.id, branchA, empK]);
     await db.query(
       `insert into customer_interactions (customer_id, branch_id, employee_id, purchase_status, purchase_date, android_phones, apple_phones,
-         commission_accessories, non_commission_accessories, visit_start, visit_end, sales_steps, google_review)
-       values ($1, $2, $3, 'purchased', current_date, 1, 2, 3, 1, '10:00', '10:30', array['greeted','needs_identified','demo_given','accessories_offered'], 'confirmed')`,
+         commission_accessories_value, non_commission_accessories_value, visit_start, visit_end, sales_steps, google_review)
+       values ($1, $2, $3, 'purchased', current_date, 1, 2, 4500, 1200.50, '10:00', '10:30', array['greeted','needs_identified','demo_given','accessories_offered'], 'confirmed')`,
       [c.id, branchA, empK]);
     const fetch = (user: string) => as(db, "authenticated", user, async (q) =>
       (await q<Record<string, unknown>>(`select * from public.analytics_rep_kpis(current_date - 30, current_date, null) where employee_id = $1`, [empK])).rows[0]);
     const r = await fetch(U.bmA);
     expect(r).toMatchObject({
-      visits: 2, sales: 1, android_phones: 1, apple_phones: 2, commission_accessories: 3, non_commission_accessories: 1,
+      visits: 2, sales: 1, android_phones: 1, apple_phones: 2,
       timed_visits: 1, measured_conversions: 1, reviews_asked: 2, reviews_confirmed: 1,
     });
+    expect(Number(r.commission_accessories_value)).toBe(4500);
+    expect(Number(r.non_commission_accessories_value)).toBe(1200.5);
     expect(Number(r.avg_visit_minutes)).toBe(30);
     expect(Number(r.avg_conversion_days)).toBe(3);
     expect(Number(r.avg_sales_steps)).toBe(3);
@@ -335,13 +339,25 @@ describe("sales rep scorecard", () => {
     await expect(as(db, "anon", null, (q) => q(`select * from public.analytics_rep_kpis()`))).rejects.toThrow(/permission denied/);
   });
 
-  test("the upgrade script can be run again safely", async () => {
+  test("the upgrade script can be run again safely (on the database it was written for)", async () => {
     const { readFileSync } = await import("node:fs");
     const { join } = await import("node:path");
-    const before = await one<{ n: number }>(`select count(*)::int n from customer_interactions where kpi_tracked`);
-    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-rep-scorecard.sql"), "utf8"));
-    const after = await one<{ n: number }>(`select count(*)::int n from customer_interactions where kpi_tracked`);
-    expect(after.n).toBe(before.n);
+    // Later upgrades change the scorecard query (accessories in Rs.), so this script is only re-run
+    // on a database from before them. On a newer one it stops with an error and changes nothing.
+    const sql = readFileSync(join(__dirname, "../../scripts/upgrade-rep-scorecard.sql"), "utf8");
+    const old = await createTestDb({ before: "20261110000010" });
+    await old.exec(sql);
+    await old.exec(sql);
+    const n = await old.query<{ n: number }>(`select count(*)::int n from pg_proc where proname = 'analytics_rep_kpis'`);
+    expect(n.rows[0].n).toBe(1);
+    await old.close();
+    const latest = await createTestDb();
+    await expect(latest.exec(sql)).rejects.toThrow(/return type/);
+    await latest.exec("rollback");
+    const cols = await latest.query<{ n: number }>(
+      `select count(*)::int n from information_schema.routines r where r.routine_name = 'analytics_rep_kpis'`);
+    expect(cols.rows[0].n).toBe(1);
+    await latest.close();
   });
 });
 
@@ -531,5 +547,28 @@ describe("staff leave register", () => {
     const after = await one<{ n: number }>(`select count(*)::int n from employee_leave`);
     expect(after.n).toBe(before.n);
     expect(after.n).toBe(4);
+  });
+});
+
+describe("system settings", () => {
+  test("a Super Admin can save empty optional settings and a new survey expiry", async () => {
+    await as(db, "authenticated", U.admin, (q) =>
+      q(`insert into system_settings (key, value) values ('survey_expiry_days', '2'::jsonb), ('support_phone', '""'::jsonb), ('company_logo_url', '""'::jsonb)
+         on conflict (key) do update set value = excluded.value`));
+    const v = await one<{ value: number }>(`select value from system_settings where key = 'survey_expiry_days'`);
+    expect(v.value).toBe(2);
+    // What the old code sent for an empty field — rejected by the NOT NULL column.
+    await expect(db.query(`update system_settings set value = null where key = 'support_phone'`)).rejects.toThrow(/null/);
+  });
+});
+
+describe("accessory values upgrade", () => {
+  test("the upgrade script can be run again safely", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-accessory-values.sql"), "utf8"));
+    const r = await as(db, "authenticated", U.admin, async (q) =>
+      (await q<{ n: number }>(`select count(*)::int n from public.analytics_rep_kpis(null, null, null)`)).rows[0].n);
+    expect(r).toBeGreaterThan(0);
   });
 });

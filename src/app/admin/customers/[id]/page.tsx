@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Mail, Phone } from "lucide-react";
 import { canSeeContactDetails, requirePageRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { formatDate, formatDateTime, formatRating, todayColombo } from "@/lib/format";
+import { formatDate, formatDateTime, formatLKR, formatRating, todayColombo } from "@/lib/format";
 import { NON_PURCHASE_REASON_LABELS, type NonPurchaseReason } from "@/lib/survey/definitions";
 import { formatMobile, maskMobile } from "@/lib/phone";
 import { GOOGLE_REVIEW_OPTIONS, PURCHASE_STATUS_LABELS, SALES_STEPS, SOURCE_LABELS, type CustomerSource, type InvitationStatus, type PurchaseStatus } from "@/lib/types";
@@ -32,6 +32,8 @@ interface Interaction {
   other_devices: number;
   commission_accessories: number;
   non_commission_accessories: number;
+  commission_accessories_value: number;
+  non_commission_accessories_value: number;
   visit_start: string | null;
   visit_end: string | null;
   sales_steps: string[];
@@ -62,8 +64,8 @@ function salesSummary(r: Interaction) {
     r.android_phones && `${r.android_phones} Android`,
     r.apple_phones && `${r.apple_phones} Apple`,
     r.other_devices && `${r.other_devices} other device${r.other_devices === 1 ? "" : "s"}`,
-    r.commission_accessories && `${r.commission_accessories} commission acc.`,
-    r.non_commission_accessories && `${r.non_commission_accessories} non-comm. acc.`,
+    Number(r.commission_accessories_value) > 0 && `${formatLKR(Number(r.commission_accessories_value))} commission acc.`,
+    Number(r.non_commission_accessories_value) > 0 && `${formatLKR(Number(r.non_commission_accessories_value))} non-comm. acc.`,
   ].filter(Boolean);
   const parts = [
     sold.length ? `Sold: ${sold.join(", ")}` : null,
@@ -152,7 +154,7 @@ export default async function CustomerPage({ params }: PageProps<"/admin/custome
     supabase
       .from("customer_interactions")
       .select(
-        "id, interaction_date, purchase_status, purchase_date, product_category, product_model, invoice_number, source, notes, android_phones, apple_phones, other_devices, commission_accessories, non_commission_accessories, visit_start, visit_end, sales_steps, google_review, kpi_tracked, branches(name), employees(full_name), survey_invitations(id, status, survey_type, created_at, sent_at, opened_at, completed_at, expires_at, send_count, last_error, survey_responses(id, nps_score, nps_category, additional_feedback, staff_service_rating, product_satisfaction, overall_experience_rating, product_pricing_satisfaction, non_purchase_reason, other_reason_description, submitted_at))",
+        "id, interaction_date, purchase_status, purchase_date, product_category, product_model, invoice_number, source, notes, android_phones, apple_phones, other_devices, commission_accessories, non_commission_accessories, commission_accessories_value, non_commission_accessories_value, visit_start, visit_end, sales_steps, google_review, kpi_tracked, branches(name), employees(full_name), survey_invitations(id, status, survey_type, created_at, sent_at, opened_at, completed_at, expires_at, send_count, last_error, survey_responses(id, nps_score, nps_category, additional_feedback, staff_service_rating, product_satisfaction, overall_experience_rating, product_pricing_satisfaction, non_purchase_reason, other_reason_description, submitted_at))",
       )
       .eq("customer_id", id)
       .order("interaction_date", { ascending: false }),

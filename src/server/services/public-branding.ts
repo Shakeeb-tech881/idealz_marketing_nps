@@ -20,7 +20,7 @@ export async function getPublicBranding(showroomBrand?: string | null): Promise<
       .select("key, value")
       .in("key", ["company_display_name", "company_logo_url"]);
     const get = (k: string) => data?.find((d) => d.key === k)?.value as string | null | undefined;
-    return { name: get("company_display_name") || DEFAULT_BRAND, logoUrl: get("company_logo_url") ?? null };
+    return { name: get("company_display_name") || DEFAULT_BRAND, logoUrl: get("company_logo_url") || null };
   } catch {
     return { name: DEFAULT_BRAND, logoUrl: null };
   }

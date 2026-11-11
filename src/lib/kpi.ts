@@ -45,7 +45,7 @@ export type Grade = (typeof GRADE_BANDS)[number]["grade"];
 export const AVERAGE_SCORE = 75;
 /** A rep needs at least this many tracked visits in the period to be graded. */
 export const MIN_GRADED_VISITS = 10;
-/** Commission accessories count 1.5× a non-commission accessory. */
+/** Each rupee of commission accessories counts 1.5× a rupee of non-commission accessories. */
 export const COMMISSION_ACCESSORY_WEIGHT = 1.5;
 /** Points taken off the final score for each day of sudden leave without proof. */
 export const LEAVE_PENALTY_PER_DAY = 5;
@@ -63,8 +63,9 @@ export interface RepKpiTotals {
   androidPhones: number;
   applePhones: number;
   otherDevices: number;
-  commissionAccessories: number;
-  nonCommissionAccessories: number;
+  /** Accessories are measured by sales value (Rs.), not quantity. */
+  commissionAccessoriesValue: number;
+  nonCommissionAccessoriesValue: number;
   timedVisits: number;
   avgVisitMinutes: number | null;
   measuredConversions: number;
@@ -145,7 +146,7 @@ function measures(r: RepKpiTotals) {
   const days = workingDays(r);
   return {
     phones: (r.androidPhones + r.applePhones + r.otherDevices) / days,
-    accessories: (COMMISSION_ACCESSORY_WEIGHT * r.commissionAccessories + r.nonCommissionAccessories) / days,
+    accessories: (COMMISSION_ACCESSORY_WEIGHT * r.commissionAccessoriesValue + r.nonCommissionAccessoriesValue) / days,
     conversion: r.visits ? r.sales / r.visits : 0,
     // A confirmed review counts fully; asked-but-not-confirmed counts half.
     reviews: r.visits ? (r.reviewsConfirmed + 0.5 * (r.reviewsAsked - r.reviewsConfirmed)) / r.visits : 0,

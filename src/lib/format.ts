@@ -48,3 +48,9 @@ export function isoMonthStart(): string {
 export function colomboDateDaysAgo(days: number): string {
   return formatInTimeZone(new Date(Date.now() - days * 86400000), APP_TIMEZONE, "yyyy-MM-dd");
 }
+
+/** Sri Lankan rupees, e.g. "Rs. 12,500" (cents only when present). */
+export function formatLKR(n: number | null | undefined): string {
+  if (n === null || n === undefined || Number.isNaN(n)) return "—";
+  return `Rs. ${new Intl.NumberFormat("en-LK", { maximumFractionDigits: 2 }).format(n)}`;
+}

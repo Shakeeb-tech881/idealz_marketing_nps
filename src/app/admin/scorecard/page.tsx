@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { parseFilters } from "@/lib/analytics/filters";
 import { getSettings } from "@/lib/settings";
 import { formatNps } from "@/lib/nps";
-import { formatRating } from "@/lib/format";
+import { formatLKR, formatRating } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_LABELS, KPI_WEIGHTS, LEAVE_PENALTY_PER_DAY, MAX_LEAVE_PENALTY, MIN_GRADED_VISITS, repStatusText, type Grade, type KpiKey, type RepScore } from "@/lib/kpi";
 import { SALES_STEPS } from "@/lib/types";
@@ -99,7 +99,7 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
             <strong>No targets needed.</strong> Device sales, accessories, conversion rate and Google reviews compare each rep with the average rep in the same showroom for this period: matching the average scores {AVERAGE_SCORE}, a third above average scores 100. Showrooms with fewer than two graded reps compare against the whole company.
           </p>
           <p className="text-muted-foreground">
-            Weights: {KPI_KEYS.map((k) => `${KPI_LABELS[k]} ${KPI_WEIGHTS[k]}%`).join(" · ")}. Commission accessories count {COMMISSION_ACCESSORY_WEIGHT}×. Customer feedback = staff rating (60%) + NPS (40%), only with ≥ {settings.min_employee_sample} survey responses. Sales steps = share of the {SALES_STEPS.length} steps ticked per visit. A KPI that can&apos;t be measured is left out and the others scale up.
+            Weights: {KPI_KEYS.map((k) => `${KPI_LABELS[k]} ${KPI_WEIGHTS[k]}%`).join(" · ")}. Accessories are scored by sales value (Rs.); commission accessories count {COMMISSION_ACCESSORY_WEIGHT}× their value. Customer feedback = staff rating (60%) + NPS (40%), only with ≥ {settings.min_employee_sample} survey responses. Sales steps = share of the {SALES_STEPS.length} steps ticked per visit. A KPI that can&apos;t be measured is left out and the others scale up.
           </p>
           <p className="text-muted-foreground">
             Grades: {GRADE_BANDS.map((b) => (b.grade === "Fail" ? `Fail < ${GRADE_BANDS[GRADE_BANDS.length - 2].min}` : `${b.grade} ≥ ${b.min}`)).join(" · ")}. A rep with fewer than {MIN_GRADED_VISITS} tracked visits in the period is flagged <strong className="text-[#a52727]">Low activity</strong> instead of graded, so the manager can follow up. Only visits recorded with the scorecard fields count; older and imported visits are left out.
@@ -226,8 +226,8 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                     <TableHead className="text-right">Android</TableHead>
                     <TableHead className="text-right">Apple</TableHead>
                     <TableHead className="text-right">Other devices</TableHead>
-                    <TableHead className="text-right whitespace-nowrap">Commission acc.</TableHead>
-                    <TableHead className="text-right whitespace-nowrap">Non-comm. acc.</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Commission acc. (Rs.)</TableHead>
+                    <TableHead className="text-right whitespace-nowrap">Non-comm. acc. (Rs.)</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Days off</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Sudden, no proof</TableHead>
                     <TableHead className="text-right whitespace-nowrap">Avg time with customer</TableHead>
@@ -251,8 +251,8 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                       <TableCell className="text-right tabular">{r.androidPhones}</TableCell>
                       <TableCell className="text-right tabular">{r.applePhones}</TableCell>
                       <TableCell className="text-right tabular">{r.otherDevices}</TableCell>
-                      <TableCell className="text-right tabular">{r.commissionAccessories}</TableCell>
-                      <TableCell className="text-right tabular">{r.nonCommissionAccessories}</TableCell>
+                      <TableCell className="text-right tabular whitespace-nowrap">{formatLKR(r.commissionAccessoriesValue)}</TableCell>
+                      <TableCell className="text-right tabular whitespace-nowrap">{formatLKR(r.nonCommissionAccessoriesValue)}</TableCell>
                       <TableCell className="text-right tabular">{r.leaveDays ?? 0}</TableCell>
                       <TableCell className={`text-right tabular ${r.unexcusedLeaveDays ? "font-bold text-[#a52727]" : ""}`}>{r.unexcusedLeaveDays ?? 0}</TableCell>
                       <TableCell className="text-right tabular" title={`${r.timedVisits} visits with times recorded`}>{r.avgVisitMinutes === null ? "—" : `${Math.round(r.avgVisitMinutes)} min`}</TableCell>

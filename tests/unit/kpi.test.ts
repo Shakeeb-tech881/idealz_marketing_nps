@@ -5,7 +5,7 @@ import { interactionSchema, newCustomerSchema } from "@/lib/validation/customer"
 const rep = (over: Partial<RepKpiTotals>): RepKpiTotals => ({
   employeeId: over.name ?? "x", name: "x", branchId: "b1", branchName: "Prime", isActive: true,
   visits: 20, sales: 10, androidPhones: 5, applePhones: 5, otherDevices: 0,
-  commissionAccessories: 4, nonCommissionAccessories: 4, timedVisits: 20, avgVisitMinutes: 25,
+  commissionAccessoriesValue: 8000, nonCommissionAccessoriesValue: 6000, timedVisits: 20, avgVisitMinutes: 25,
   measuredConversions: 10, avgConversionDays: 1, avgSalesSteps: 6, reviewsAsked: 10, reviewsConfirmed: 4,
   feedbackResponses: 12, avgStaffRating: 4.5, nps: 60, ...over,
 });
@@ -40,9 +40,9 @@ describe("rep scorecard", () => {
   test("reps are compared within their showroom; too few visits are not graded", () => {
     const out = scoreReps(
       [
-        rep({ name: "Star", androidPhones: 10, applePhones: 10, commissionAccessories: 10, sales: 15, reviewsConfirmed: 10, reviewsAsked: 15, avgSalesSteps: 8 }),
+        rep({ name: "Star", androidPhones: 10, applePhones: 10, commissionAccessoriesValue: 20000, sales: 15, reviewsConfirmed: 10, reviewsAsked: 15, avgSalesSteps: 8 }),
         rep({ name: "Average" }),
-        rep({ name: "Weak", androidPhones: 1, applePhones: 0, commissionAccessories: 0, nonCommissionAccessories: 1, sales: 2, reviewsAsked: 0, reviewsConfirmed: 0, avgSalesSteps: 2, avgStaffRating: 2.5, nps: -40 }),
+        rep({ name: "Weak", androidPhones: 1, applePhones: 0, commissionAccessoriesValue: 0, nonCommissionAccessoriesValue: 1500, sales: 2, reviewsAsked: 0, reviewsConfirmed: 0, avgSalesSteps: 2, avgStaffRating: 2.5, nps: -40 }),
         rep({ name: "New", visits: 3 }),
       ],
       { minFeedbackSample: 10 },
@@ -90,7 +90,7 @@ describe("visit form scorecard fields", () => {
 
 describe("rep status", () => {
   test("enough visits but too few measurable KPIs is 'not graded', not low activity", () => {
-    const [r] = scoreReps([rep({ name: "Solo", feedbackResponses: 0, androidPhones: 0, applePhones: 0, otherDevices: 0, commissionAccessories: 0, nonCommissionAccessories: 0, reviewsAsked: 0, reviewsConfirmed: 0, avgSalesSteps: null })], { minFeedbackSample: 10 });
+    const [r] = scoreReps([rep({ name: "Solo", feedbackResponses: 0, androidPhones: 0, applePhones: 0, otherDevices: 0, commissionAccessoriesValue: 0, nonCommissionAccessoriesValue: 0, reviewsAsked: 0, reviewsConfirmed: 0, avgSalesSteps: null })], { minFeedbackSample: 10 });
     expect(r.status).toBe("insufficient_data");
     expect(repStatusText(r)).toBe("Not graded: not enough measurable KPIs yet");
   });
@@ -157,5 +157,31 @@ describe("staff leave", () => {
   test("low activity reason mentions days on leave", () => {
     const [r] = scoreReps([rep({ name: "A", visits: 4, leaveDays: 6 })], { minFeedbackSample: 10 });
     expect(repStatusText(r)).toBe("Low activity: 4 tracked visits, needs 10 · 6 days on leave");
+  });
+});
+
+describe("accessories by sales value", () => {
+  test("the form takes rupee amounts (commas allowed, blank = 0)", () => {
+    const base = { branch_id: "6f1c2a8e-1d2b-4c3d-9e4f-5a6b7c8d9e0f", purchase_status: "purchased", interaction_date: "2026-11-13" };
+    expect(interactionSchema.parse({ ...base, commission_accessories_value: "12,500", non_commission_accessories_value: "" })).toMatchObject({
+      commission_accessories_value: 12500, non_commission_accessories_value: 0,
+    });
+    expect(interactionSchema.parse({ ...base, commission_accessories_value: "999.999" }).commission_accessories_value).toBe(1000);
+    expect(interactionSchema.safeParse({ ...base, commission_accessories_value: "-5" }).success).toBe(false);
+    expect(interactionSchema.safeParse({ ...base, commission_accessories_value: "abc" }).success).toBe(false);
+    expect(interactionSchema.parse({ ...base, purchase_status: "not_purchased", commission_accessories_value: 5000 }).commission_accessories_value).toBe(0);
+  });
+
+  test("more accessory sales value per working day scores higher; commission rupees count 1.5×", () => {
+    const out = scoreReps(
+      [
+        rep({ name: "Comm", commissionAccessoriesValue: 10000, nonCommissionAccessoriesValue: 0 }),
+        rep({ name: "NonComm", commissionAccessoriesValue: 0, nonCommissionAccessoriesValue: 10000 }),
+      ],
+      { minFeedbackSample: 10 },
+    );
+    const c = out.find((r) => r.name === "Comm")!;
+    const n = out.find((r) => r.name === "NonComm")!;
+    expect(c.components.accessories!).toBeGreaterThan(n.components.accessories!);
   });
 });

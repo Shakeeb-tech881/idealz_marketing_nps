@@ -41,6 +41,16 @@ const count = (max: number) =>
     (v) => (v === "" || v === null || v === undefined || (typeof v === "number" && Number.isNaN(v)) ? 0 : Number(v)),
     z.number({ error: "Enter a number" }).int("Whole numbers only").min(0, "Cannot be negative").max(max, `At most ${max}`),
   );
+/** A rupee amount from a form field: blank means 0; commas allowed (e.g. "12,500"). */
+const rupees = (max: number) =>
+  z.preprocess(
+    (v) => {
+      if (v === "" || v === null || v === undefined || (typeof v === "number" && Number.isNaN(v))) return 0;
+      const n = typeof v === "string" ? Number(v.replace(/[,\s]/g, "")) : Number(v);
+      return Number.isFinite(n) ? Math.round(n * 100) / 100 : v;
+    },
+    z.number({ error: "Enter an amount in rupees" }).min(0, "Cannot be negative").max(max, `At most Rs. ${max.toLocaleString("en-LK")}`),
+  );
 const clockTime = z
   .union([blank, z.string().trim().regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Use HH:MM")]).optional()
   .transform((v) => (v ? v.slice(0, 5) : null));
@@ -68,6 +78,9 @@ export const interactionSchema = z
     other_devices: count(50).default(0),
     commission_accessories: count(200).default(0),
     non_commission_accessories: count(200).default(0),
+    // Accessories are measured by sales value (Rs.)
+    commission_accessories_value: rupees(10_000_000).default(0),
+    non_commission_accessories_value: rupees(10_000_000).default(0),
     visit_start: clockTime,
     visit_end: clockTime,
     sales_steps: steps.default([]),
@@ -92,6 +105,8 @@ export const interactionSchema = z
           other_devices: 0,
           commission_accessories: 0,
           non_commission_accessories: 0,
+          commission_accessories_value: 0,
+          non_commission_accessories_value: 0,
         };
   });
 

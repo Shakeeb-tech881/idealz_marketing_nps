@@ -206,7 +206,7 @@ export async function buildReport(
           ...keys.map((k) => ({ key: `kpi_${k}`, label: `${KPI_SHORT[k]} ${KPI_WEIGHTS[k]}%` })),
           { key: "visits", label: "Visits" }, { key: "sales", label: "Sales" }, { key: "conv", label: "Conv. %" },
           { key: "android", label: "Android" }, { key: "apple", label: "Apple" }, { key: "other", label: "Other dev." },
-          { key: "comm", label: "Comm. acc." }, { key: "noncomm", label: "Non-comm. acc." },
+          { key: "comm", label: "Comm. acc. Rs." }, { key: "noncomm", label: "Non-comm. acc. Rs." },
           { key: "mins", label: "Avg min" }, { key: "days", label: "Days to buy" }, { key: "steps", label: `Avg steps /${SALES_STEPS.length}` },
           { key: "reviews", label: "Reviews asked/left" }, { key: "staff", label: "Staff rating" }, { key: "nps", label: "NPS" },
           { key: "off", label: "Days off" }, { key: "unexcused", label: "Sudden, no proof" }, { key: "penalty", label: "Leave penalty" },
@@ -226,8 +226,8 @@ export async function buildReport(
           android: r.androidPhones,
           apple: r.applePhones,
           other: r.otherDevices,
-          comm: r.commissionAccessories,
-          noncomm: r.nonCommissionAccessories,
+          comm: r.commissionAccessoriesValue,
+          noncomm: r.nonCommissionAccessoriesValue,
           mins: r.avgVisitMinutes === null ? null : Math.round(r.avgVisitMinutes),
           days: r.avgConversionDays,
           steps: r.avgSalesSteps,
@@ -247,7 +247,7 @@ export async function buildReport(
         notes: [
           `KPI columns (with %) are 0-100 scores. `+
           `Grades: ${GRADE_BANDS.map((b) => (b.grade === "Fail" ? `Fail below ${GRADE_BANDS[GRADE_BANDS.length - 2].min}` : `${b.grade} ${b.min}+`)).join(", ")}. A blank KPI could not be measured: it is left out and the other weights scale up.`,
-          `No targets: sales, accessories (commission x${COMMISSION_ACCESSORY_WEIGHT}), conversion and Google reviews compare each rep with the showroom average (average = ${AVERAGE_SCORE}, one third above = 100).`,
+          `No targets: sales, accessories by sales value in Rs. (commission x${COMMISSION_ACCESSORY_WEIGHT}), conversion and Google reviews compare each rep with the showroom average (average = ${AVERAGE_SCORE}, one third above = 100).`,
           `LOW ACTIVITY (red): fewer than ${MIN_GRADED_VISITS} visits recorded with the scorecard fields in this period - not graded; manager to follow up (leave, new joiner, or visits not recorded).`,
           `LEAVE: device sales and accessories are compared per working day. Sudden leave without proof: -${LEAVE_PENALTY_PER_DAY} points per day on the score (max -${MAX_LEAVE_PENALTY}); informed leave and sudden leave with proof: no penalty.`,
           `Customer feedback counts only with ${minEmployeeSample}+ survey responses. Visits recorded before the scorecard was introduced, and bulk imports, are not counted.`,

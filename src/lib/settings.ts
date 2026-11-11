@@ -1,6 +1,7 @@
 import "server-only";
 import { cache } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { settingFromStorage } from "@/lib/settings-values";
 
 export interface AppSettings {
   company_name: string;
@@ -32,7 +33,10 @@ async function load(client: SupabaseClient): Promise<AppSettings> {
   const { data } = await client.from("system_settings").select("key, value");
   const out: Record<string, unknown> = { ...DEFAULT_SETTINGS };
   for (const row of data ?? []) {
-    if (row.key in DEFAULT_SETTINGS && row.value !== null) out[row.key] = row.value;
+    if (!(row.key in DEFAULT_SETTINGS)) continue;
+    const value = settingFromStorage(row.value);
+    // Optional settings (logo, support phone) may be empty; required ones keep their default.
+    if (value !== null || DEFAULT_SETTINGS[row.key as keyof AppSettings] === null) out[row.key] = value;
   }
   return out as unknown as AppSettings;
 }
