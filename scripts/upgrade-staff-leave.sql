@@ -6,6 +6,9 @@
 -- Safe to run more than once.
 -- =============================================================================
 
+-- NOTE: if you run this again after upgrade-branch-manager-leave.sql, run that one again too
+-- (it tightens who may record a branch manager's leave).
+
 begin;
 
 

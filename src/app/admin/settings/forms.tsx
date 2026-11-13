@@ -11,7 +11,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { FormField } from "@/components/admin/form-field";
 import type { AppSettings } from "@/lib/settings";
-import type { Branch, Employee } from "@/lib/types";
+import { SCORECARD_ROLES, type Branch, type Employee, type ScorecardRole } from "@/lib/types";
 import { allowSmsLoginAttemptAction, saveBranchAction, saveEmployeeAction, saveSettingsAction } from "./actions";
 
 type Errors = Record<string, string[] | undefined>;
@@ -154,7 +154,7 @@ export function BranchDialog({ branch }: { branch?: Branch }) {
 
 export function EmployeeDialog({ employee, branches }: { employee?: Employee; branches: Branch[] }) {
   const [open, setOpen] = useState(false);
-  const [v, setV] = useState({ full_name: employee?.full_name ?? "", branch_id: employee?.branch_id ?? "", employee_code: employee?.employee_code ?? "", job_title: employee?.job_title ?? "", is_active: employee?.is_active ?? true });
+  const [v, setV] = useState({ full_name: employee?.full_name ?? "", branch_id: employee?.branch_id ?? "", employee_code: employee?.employee_code ?? "", job_title: employee?.job_title ?? "", is_active: employee?.is_active ?? true, scorecard_role: employee?.scorecard_role ?? ("rep" as ScorecardRole) });
   const [errors, setErrors] = useState<Errors>({});
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -175,6 +175,11 @@ export function EmployeeDialog({ employee, branches }: { employee?: Employee; br
           </FormField>
           <FormField label="Employee code" htmlFor="e-code" error={errors.employee_code?.[0]} hint="Used in imports"><Input id="e-code" value={v.employee_code} onChange={(e) => setV({ ...v, employee_code: e.target.value })} /></FormField>
           <FormField label="Job title" htmlFor="e-title"><Input id="e-title" value={v.job_title} onChange={(e) => setV({ ...v, job_title: e.target.value })} /></FormField>
+          <FormField label="Scorecard" htmlFor="e-scorecard" hint={SCORECARD_ROLES.find((r) => r.value === v.scorecard_role)?.hint}>
+            <NativeSelect id="e-scorecard" value={v.scorecard_role} onChange={(e) => setV({ ...v, scorecard_role: e.target.value as ScorecardRole })}>
+              {SCORECARD_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </NativeSelect>
+          </FormField>
           <label className="flex items-center gap-2 text-sm"><Checkbox checked={v.is_active} onCheckedChange={(c) => setV({ ...v, is_active: c })} /> Active</label>
         </div>
         <DialogFooter>

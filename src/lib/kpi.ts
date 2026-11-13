@@ -1,4 +1,8 @@
 
+import type { ScorecardRole } from "@/lib/types";
+
+export type { ScorecardRole };
+
 /**
  * Sales rep scorecard.
  *
@@ -239,4 +243,132 @@ export function repStatusText(r: Pick<RepScore, "status" | "visits" | "leaveDays
   }
   if (r.status === "insufficient_data") return "Not graded: not enough measurable KPIs yet";
   return null;
+}
+
+// ---------------------------------------------------------------- branch scorecard (branch managers)
+
+/**
+ * Branch managers are graded on their whole branch, with the same KPIs, weights
+ * and A+ … Fail bands as reps. Each branch is compared with the average branch:
+ * matching the average scores 75. Volumes are per staff working day (the working
+ * days of the reps and branch managers who recorded visits), so a branch with
+ * more staff doesn't win just by being bigger.
+ */
+export interface BranchFeedback {
+  responses: number;
+  avgStaffRating: number | null;
+  nps: number | null;
+}
+
+export interface BranchKpiTotals extends RepKpiTotals {
+  /** Branch managers' names (shown next to the branch grade). */
+  managers: string[];
+  /** Reps and branch managers who recorded visits in the period. */
+  staffCount: number;
+  /** Sum of those people's working days (sales are compared per staff day). */
+  staffDays: number;
+  /** The branch manager's own days off – their sudden leave without proof lowers the branch grade. */
+  managerLeave: { informed: number; suddenProof: number; suddenNoProof: number };
+}
+
+/** Branches needed before branches can be compared with each other. */
+export const MIN_BRANCHES_TO_GRADE = 2;
+
+export type BranchScore = RepScore & Pick<BranchKpiTotals, "managers" | "staffCount" | "staffDays" | "managerLeave"> & {
+  /** Why there is no grade yet, when it isn't low activity (e.g. only one branch is live). */
+  note: string | null;
+};
+
+/**
+ * Adds every employee's tracked visits into their branch. Management (not_scored)
+ * visits count towards the branch totals but add no staff days.
+ */
+export function branchTotals(
+  employees: (RepKpiTotals & { scorecardRole: ScorecardRole })[],
+  feedback: Map<string, BranchFeedback>,
+  managers: Map<string, string[]>,
+): BranchKpiTotals[] {
+  const byBranch = new Map<string, (RepKpiTotals & { scorecardRole: ScorecardRole })[]>();
+  for (const e of employees) byBranch.set(e.branchId, [...(byBranch.get(e.branchId) ?? []), e]);
+  const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+  const weightedAvg = (pairs: [number | null, number][]) => {
+    const ok = pairs.filter(([v, w]) => v !== null && w > 0) as [number, number][];
+    const w = sum(ok.map(([, w]) => w));
+    return w > 0 ? Math.round((sum(ok.map(([v, w]) => v * w)) / w) * 10) / 10 : null;
+  };
+
+  return [...byBranch.entries()].map(([branchId, list]) => {
+    const staff = list.filter((e) => e.scorecardRole !== "not_scored" && e.visits > 0);
+    const mgrs = list.filter((e) => e.scorecardRole === "branch_manager");
+    const managerLeave = {
+      informed: sum(mgrs.map((e) => e.informedLeaveDays ?? 0)),
+      suddenProof: sum(mgrs.map((e) => e.excusedSuddenDays ?? 0)),
+      suddenNoProof: sum(mgrs.map((e) => e.unexcusedLeaveDays ?? 0)),
+    };
+    const staffDays = sum(staff.map(workingDays));
+    const fb = feedback.get(branchId);
+    return {
+      employeeId: branchId,
+      name: list[0].branchName,
+      branchId,
+      branchName: list[0].branchName,
+      isActive: true,
+      visits: sum(list.map((e) => e.visits)),
+      sales: sum(list.map((e) => e.sales)),
+      androidPhones: sum(list.map((e) => e.androidPhones)),
+      applePhones: sum(list.map((e) => e.applePhones)),
+      otherDevices: sum(list.map((e) => e.otherDevices)),
+      commissionAccessoriesValue: sum(list.map((e) => e.commissionAccessoriesValue)),
+      nonCommissionAccessoriesValue: sum(list.map((e) => e.nonCommissionAccessoriesValue)),
+      timedVisits: sum(list.map((e) => e.timedVisits)),
+      avgVisitMinutes: weightedAvg(list.map((e) => [e.avgVisitMinutes, e.timedVisits])),
+      measuredConversions: sum(list.map((e) => e.measuredConversions)),
+      avgConversionDays: weightedAvg(list.map((e) => [e.avgConversionDays, e.measuredConversions])),
+      avgSalesSteps: weightedAvg(list.map((e) => [e.avgSalesSteps, e.visits])),
+      reviewsAsked: sum(list.map((e) => e.reviewsAsked)),
+      reviewsConfirmed: sum(list.map((e) => e.reviewsConfirmed)),
+      feedbackResponses: fb?.responses ?? 0,
+      avgStaffRating: fb?.avgStaffRating ?? null,
+      nps: fb?.nps ?? null,
+      // Branch volumes are per staff working day (everyone's leave is already taken out of staffDays).
+      periodDays: Math.max(1, staffDays),
+      leaveDays: 0,
+      // The branch manager's sudden leave without proof: same penalty as a rep (5 points a day, at most 25).
+      unexcusedLeaveDays: managerLeave.suddenNoProof,
+      informedLeaveDays: managerLeave.informed,
+      excusedSuddenDays: managerLeave.suddenProof,
+      managers: managers.get(branchId) ?? [],
+      staffCount: staff.length,
+      staffDays,
+      managerLeave,
+    };
+  });
+}
+
+/** Grades each branch against the average branch (same KPIs, weights and grade bands as reps). */
+export function scoreBranches(rows: BranchKpiTotals[], opts: { minFeedbackSample: number; minVisits?: number }): BranchScore[] {
+  const minVisits = opts.minVisits ?? MIN_GRADED_VISITS;
+  // Every branch has its own branchId, so scoreReps compares each one with all graded branches.
+  const scored = scoreReps(rows, opts);
+  const comparable = rows.filter((r) => r.visits >= minVisits).length;
+  return scored.map((s, i) => {
+    const extra = { managers: rows[i].managers, staffCount: rows[i].staffCount, staffDays: rows[i].staffDays, managerLeave: rows[i].managerLeave };
+    if (s.status === "low_activity" || comparable >= MIN_BRANCHES_TO_GRADE) return { ...s, ...extra, note: null };
+    // One live branch has nothing to be compared with: matching "the average branch" would always give 75.
+    // Show its results, but no grade until a second branch is recording visits.
+    const components = { ...s.components, phones: null, accessories: null, conversion: null, reviews: null };
+    return {
+      ...s,
+      ...extra,
+      components,
+      graded: false,
+      status: "insufficient_data" as const,
+      score: null,
+      scoreBeforePenalty: null,
+      grade: null,
+      comparedWith: null,
+      recordingRate: null,
+      note: `Not graded yet: branches are compared with each other, so grades start when a second branch records ${minVisits}+ visits.`,
+    };
+  });
 }

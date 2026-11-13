@@ -5,7 +5,7 @@ import type { Branch, Employee, Profile } from "@/lib/types";
 /** Branches and employees the current user may see (RLS-filtered). */
 export async function getLookups(sb: SupabaseClient, opts: { includeInactive?: boolean; profile?: Profile } = {}) {
   let bq = sb.from("branches").select("id, name, code, city, address, phone, sms_sender_id, brand_name, is_active").order("name");
-  let eq = sb.from("employees").select("id, branch_id, full_name, employee_code, job_title, is_active").order("full_name");
+  let eq = sb.from("employees").select("id, branch_id, full_name, employee_code, job_title, is_active, scorecard_role").order("full_name");
   if (!opts.includeInactive) {
     bq = bq.eq("is_active", true);
     eq = eq.eq("is_active", true);

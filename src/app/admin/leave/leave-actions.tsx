@@ -48,7 +48,7 @@ export function RecordLeaveDialog({ employees, branches, today }: { employees: E
           <DialogDescription>One day or a range. Recording a day again replaces it.</DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
-          <FormField label="Sales rep" htmlFor="l-emp" required>
+          <FormField label="Employee" htmlFor="l-emp" required>
             <NativeSelect id="l-emp" value={v.employee_id} onChange={(e) => setV({ ...v, employee_id: e.target.value })}>
               <option value="">Choose…</option>
               {employees.map((e) => (

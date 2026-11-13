@@ -38,7 +38,16 @@ export interface Employee {
   employee_code: string | null;
   job_title: string | null;
   is_active: boolean;
+  /** rep = graded personally · branch_manager = graded on the branch · not_scored = management, no grade */
+  scorecard_role: ScorecardRole;
 }
+
+export type ScorecardRole = "rep" | "branch_manager" | "not_scored";
+export const SCORECARD_ROLES: { value: ScorecardRole; label: string; hint: string }[] = [
+  { value: "rep", label: "Sales rep", hint: "Graded on the Sales Rep Scorecard" },
+  { value: "branch_manager", label: "Branch manager", hint: "Graded on the whole branch’s result" },
+  { value: "not_scored", label: "Management – not graded", hint: "No grade; visits still count for the branch" },
+];
 
 export const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: "Super Admin",

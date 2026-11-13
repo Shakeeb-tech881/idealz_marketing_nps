@@ -16,7 +16,7 @@ export default async function ReportsPage() {
   return (
     <>
       <PageHeader title="Reports & exports" description="Download live database results as Excel, CSV or PDF. Exports respect your access level and are recorded in the audit log." />
-      <ReportBuilder reports={REPORT_TYPES.map((r) => ({ ...r }))} branches={lookups.branches} employees={lookups.employees} defaultFrom={colomboDateDaysAgo(29)} defaultTo={todayColombo()} />
+      <ReportBuilder reports={REPORT_TYPES.filter((r) => r.value !== "branch_scorecard" || profile.role === "super_admin" || profile.role === "management").map((r) => ({ ...r }))} branches={lookups.branches} employees={lookups.employees} defaultFrom={colomboDateDaysAgo(29)} defaultTo={todayColombo()} />
     </>
   );
 }

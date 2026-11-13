@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/admin/page-header";
 import { Panel } from "@/components/admin/panel";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+import { SCORECARD_ROLES } from "@/lib/types";
 import { BranchDialog, EmployeeDialog, GeneralSettingsForm, AllowSmsLoginButton } from "./forms";
 
 export const metadata: Metadata = { title: "Settings" };
@@ -80,7 +81,7 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
       {tab === "employees" && (
         <Panel title="Employees / salespeople" actions={<EmployeeDialog branches={lookups.branches.filter((b) => b.is_active)} />} bodyClassName="px-0 pb-0">
           <Table>
-            <TableHeader><TableRow className="bg-muted/50"><TableHead className="pl-5">Name</TableHead><TableHead>Code</TableHead><TableHead>Branch</TableHead><TableHead>Title</TableHead><TableHead>Status</TableHead><TableHead className="pr-5" /></TableRow></TableHeader>
+            <TableHeader><TableRow className="bg-muted/50"><TableHead className="pl-5">Name</TableHead><TableHead>Code</TableHead><TableHead>Branch</TableHead><TableHead>Title</TableHead><TableHead>Scorecard</TableHead><TableHead>Status</TableHead><TableHead className="pr-5" /></TableRow></TableHeader>
             <TableBody>
               {lookups.employees.map((e) => (
                 <TableRow key={e.id}>
@@ -88,11 +89,12 @@ export default async function SettingsPage({ searchParams }: PageProps<"/admin/s
                   <TableCell className="tabular">{e.employee_code ?? "—"}</TableCell>
                   <TableCell>{branchName.get(e.branch_id) ?? "—"}</TableCell>
                   <TableCell>{e.job_title ?? "—"}</TableCell>
+                  <TableCell className={e.scorecard_role === "rep" ? "" : "text-muted-foreground"}>{SCORECARD_ROLES.find((r) => r.value === e.scorecard_role)?.label ?? "Sales rep"}</TableCell>
                   <TableCell>{e.is_active ? "Active" : <span className="text-muted-foreground">Inactive</span>}</TableCell>
                   <TableCell className="pr-5 text-right"><EmployeeDialog employee={e} branches={lookups.branches} /></TableCell>
                 </TableRow>
               ))}
-              {lookups.employees.length === 0 && <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">No employees yet.</TableCell></TableRow>}
+              {lookups.employees.length === 0 && <TableRow><TableCell colSpan={7} className="py-8 text-center text-muted-foreground">No employees yet.</TableCell></TableRow>}
             </TableBody>
           </Table>
         </Panel>

@@ -48,6 +48,7 @@ export const employeeSchema = z.object({
   employee_code: z.string().trim().max(30).regex(/^[A-Za-z0-9_-]*$/, "Letters, numbers, - or _ only").optional().transform((v) => v || null),
   job_title: z.string().trim().max(80).optional().transform((v) => v || null),
   is_active: z.boolean().default(true),
+  scorecard_role: z.enum(["rep", "branch_manager", "not_scored"]).default("rep"),
 });
 
 export async function saveEmployee(actor: Profile, id: string | null, raw: unknown) {

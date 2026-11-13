@@ -621,3 +621,92 @@ describe("Google reviews are confirmed by managers", () => {
     expect((await one<{ google_review: string }>(`select google_review from customer_interactions where id = $1`, [visit])).google_review).toBe("not_found");
   });
 });
+
+describe("scorecard roles: management not graded, branch managers graded on the branch", () => {
+  let empMgmt: string, empBm: string;
+  const role = async (id: string) => (await one<{ scorecard_role: string }>(`select scorecard_role from employees where id = $1`, [id])).scorecard_role;
+  beforeAll(async () => {
+    empMgmt = (await one<{ id: string }>(`insert into employees (branch_id, full_name) values ($1, 'Head Office Person') returning id`, [branchA])).id;
+    empBm = (await one<{ id: string }>(`insert into employees (branch_id, full_name) values ($1, 'Kandy Manager') returning id`, [branchB])).id;
+  });
+
+  test("new employees are sales reps by default", async () => {
+    expect(await role(empMgmt)).toBe("rep");
+  });
+
+  test("linking a Management login takes the employee off the scorecard", async () => {
+    await db.query(`update profiles set employee_id = $1 where id = $2`, [empMgmt, U.mgmt]);
+    expect(await role(empMgmt)).toBe("not_scored");
+  });
+
+  test("linking a Branch Manager login grades the employee on the branch; a role change follows", async () => {
+    await db.query(`update profiles set employee_id = $1 where id = $2`, [empBm, U.bmB]);
+    expect(await role(empBm)).toBe("branch_manager");
+    await db.query(`update profiles set role = 'staff' where id = $1`, [U.bmB]);
+    expect(await role(empBm)).toBe("rep");
+    await db.query(`update profiles set role = 'branch_manager' where id = $1`, [U.bmB]);
+    expect(await role(empBm)).toBe("branch_manager");
+  });
+
+  test("only a Super Admin can change it by hand; bad values are rejected", async () => {
+    const res = await as(db, "authenticated", U.bmA, (q) => q(`update employees set scorecard_role = 'not_scored' where id = $1 returning id`, [empA2]));
+    expect(res.rows).toHaveLength(0);
+    await as(db, "authenticated", U.admin, (q) => q(`update employees set scorecard_role = 'not_scored' where id = $1`, [empA2]));
+    expect(await role(empA2)).toBe("not_scored");
+    await as(db, "authenticated", U.admin, (q) => q(`update employees set scorecard_role = 'rep' where id = $1`, [empA2]));
+    await expect(db.query(`update employees set scorecard_role = 'boss' where id = $1`, [empA2])).rejects.toThrow(/scorecard_role/);
+  });
+
+  test("the upgrade script can be run again safely and keeps the roles", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-scorecard-roles.sql"), "utf8"));
+    expect(await role(empMgmt)).toBe("not_scored");
+    expect(await role(empBm)).toBe("branch_manager");
+    expect(await role(empA1)).toBe("rep");
+  });
+});
+
+describe("branch managers' leave is recorded by Management only", () => {
+  let empMgr: string;
+  beforeAll(async () => {
+    empMgr = (await one<{ id: string }>(`insert into employees (branch_id, full_name) values ($1, 'Prime Manager') returning id`, [branchA])).id;
+    await db.query(`update profiles set employee_id = $1 where id = $2`, [empMgr, U.bmA]);
+    // An earlier test re-ran the older staff-leave upgrade, which put back the old policy; apply this one again (newest last).
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-branch-manager-leave.sql"), "utf8"));
+  });
+  const leave = (who: string, emp: string, day: string, type = "sudden") =>
+    as(db, "authenticated", who, (q) => q(`insert into employee_leave (employee_id, leave_date, leave_type) values ($1, $2, $3) returning id`, [emp, day, type]));
+
+  test("a branch manager cannot record their own leave", async () => {
+    await expect(leave(U.bmA, empMgr, "2026-11-20")).rejects.toThrow(/row-level security/);
+  });
+
+  test("a branch manager still records leave for reps in their showroom", async () => {
+    const r = await leave(U.bmA, empA2, "2026-11-20", "informed");
+    expect(r.rows).toHaveLength(1);
+  });
+
+  test("Management records the branch manager's leave; the branch manager can't excuse or delete it", async () => {
+    const id = ((await leave(U.mgmt, empMgr, "2026-11-21")).rows[0] as { id: string }).id;
+    const upd = await as(db, "authenticated", U.bmA, (q) => q(`update employee_leave set proof_received = true where id = $1 returning id`, [id]));
+    expect(upd.rows).toHaveLength(0);
+    const del = await as(db, "authenticated", U.bmA, (q) => q(`delete from employee_leave where id = $1 returning id`, [id]));
+    expect(del.rows).toHaveLength(0);
+    // The branch manager can still see it.
+    const seen = await as(db, "authenticated", U.bmA, (q) => q(`select id from employee_leave where id = $1`, [id]));
+    expect(seen.rows).toHaveLength(1);
+    const k = await as(db, "authenticated", U.mgmt, async (q) =>
+      (await q<{ sudden_no_proof_days: number }>(`select sudden_no_proof_days from public.analytics_rep_leave('2026-11-01', '2026-11-30', null) where employee_id = $1`, [empMgr])).rows[0]);
+    expect(Number(k.sudden_no_proof_days)).toBe(1);
+  });
+
+  test("the upgrade script can be run again safely", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    await db.exec(readFileSync(join(__dirname, "../../scripts/upgrade-branch-manager-leave.sql"), "utf8"));
+    await expect(leave(U.bmA, empMgr, "2026-11-22")).rejects.toThrow(/row-level security/);
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { feedbackScore, gradeFor, repStatusText, KPI_WEIGHTS, relativeScore, scoreReps, weightedScore, type RepKpiTotals } from "@/lib/kpi";
+import { branchTotals, feedbackScore, gradeFor, repStatusText, KPI_WEIGHTS, relativeScore, scoreBranches, scoreReps, weightedScore, type RepKpiTotals, type ScorecardRole } from "@/lib/kpi";
 import { interactionImportSchema, interactionSchema, newCustomerSchema } from "@/lib/validation/customer";
 
 const rep = (over: Partial<RepKpiTotals>): RepKpiTotals => ({
@@ -248,5 +248,89 @@ describe("fair play", () => {
     );
     expect(out.find((r) => r.name === "Asker")!.components.reviews).toBe(0);
     expect(out.find((r) => r.name === "Real")!.components.reviews!).toBeGreaterThan(0);
+  });
+});
+
+describe("branch scorecard (branch managers)", () => {
+  const emp = (name: string, branchId: string, role: ScorecardRole, over: Partial<RepKpiTotals> = {}) => ({
+    ...rep({ name, branchId, branchName: branchId === "b1" ? "Prime" : branchId === "b2" ? "Marino" : "iSeven", periodDays: 30, ...over }),
+    scorecardRole: role,
+  });
+  const fb = new Map([
+    ["b1", { responses: 30, avgStaffRating: 4.5, nps: 60 }],
+    ["b2", { responses: 30, avgStaffRating: 4.5, nps: 60 }],
+    ["b3", { responses: 3, avgStaffRating: 5, nps: 100 }],
+  ]);
+
+  test("every visit counts for the branch; management adds sales but no staff days", () => {
+    const [b1] = branchTotals(
+      [emp("Rep1", "b1", "rep"), emp("Mgr", "b1", "branch_manager", { visits: 10, sales: 5 }), emp("Boss", "b1", "not_scored", { visits: 4, sales: 4 })],
+      fb, new Map([["b1", ["Mgr"]]]),
+    );
+    expect(b1).toMatchObject({ name: "Prime", visits: 34, sales: 19, staffCount: 2, staffDays: 60, managers: ["Mgr"], feedbackResponses: 30 });
+  });
+
+  test("a branch's sales are per staff day, so size alone does not win", () => {
+    // b1 has two reps, b2 one rep doing exactly the same per person: equal scores.
+    const totals = branchTotals([emp("A", "b1", "rep"), emp("B", "b1", "rep"), emp("C", "b2", "rep")], fb, new Map());
+    const [b1, b2] = scoreBranches(totals, { minFeedbackSample: 10 });
+    expect(b1.components.phones).toBe(75);
+    expect(b2.components.phones).toBe(75);
+    expect(b1.score).toBe(b2.score);
+    expect(b1.comparedWith).toBe("company");
+  });
+
+  test("a stronger branch scores higher; too few branch responses leaves feedback out", () => {
+    const totals = branchTotals(
+      [emp("A", "b1", "rep", { applePhones: 10 }), emp("C", "b2", "rep"), emp("D", "b3", "rep")],
+      fb, new Map(),
+    );
+    const out = scoreBranches(totals, { minFeedbackSample: 10 });
+    const by = Object.fromEntries(out.map((b) => [b.branchId, b]));
+    expect(by.b1.components.phones!).toBeGreaterThan(by.b2.components.phones!);
+    expect(by.b3.components.feedback).toBeNull();
+    expect(by.b1.grade).not.toBeNull();
+  });
+
+  test("a branch with fewer than 10 visits is flagged low activity, not graded", () => {
+    const totals = branchTotals([emp("A", "b1", "rep"), emp("C", "b2", "rep", { visits: 4, sales: 2 })], fb, new Map());
+    const by = Object.fromEntries(scoreBranches(totals, { minFeedbackSample: 10 }).map((b) => [b.branchId, b]));
+    expect(by.b2.status).toBe("low_activity");
+    expect(by.b2.grade).toBeNull();
+    expect(by.b2.penalty).toBe(0);
+  });
+});
+
+describe("branch managers' leave and a single live branch", () => {
+  const emp = (name: string, branchId: string, role: ScorecardRole, over: Partial<RepKpiTotals> = {}) => ({
+    ...rep({ name, branchId, branchName: branchId, periodDays: 30, ...over }),
+    scorecardRole: role,
+  });
+  const fb = new Map([["b1", { responses: 30, avgStaffRating: 4.5, nps: 60 }], ["b2", { responses: 30, avgStaffRating: 4.5, nps: 60 }]]);
+
+  test("the branch manager's sudden leave without proof comes off the branch grade", () => {
+    const rows = branchTotals([
+      emp("Rep1", "b1", "rep"), emp("Mgr1", "b1", "branch_manager", { unexcusedLeaveDays: 2, informedLeaveDays: 1, leaveDays: 3 }),
+      emp("Rep2", "b2", "rep"), emp("Mgr2", "b2", "branch_manager"),
+    ], fb, new Map());
+    const by = Object.fromEntries(scoreBranches(rows, { minFeedbackSample: 10 }).map((b) => [b.branchId, b]));
+    expect(by.b1.managerLeave).toEqual({ informed: 1, suddenProof: 0, suddenNoProof: 2 });
+    expect(by.b1.penalty).toBe(10);
+    expect(by.b1.score).toBe(Math.round((by.b1.scoreBeforePenalty! - 10) * 10) / 10);
+    expect(by.b2.penalty).toBe(0);
+    // A rep's leave is not a branch penalty (it only lowers the staff days).
+    expect(by.b1.staffDays).toBe(30 + 27);
+  });
+
+  test("with only one live branch there is no grade yet, but results and leave still show", () => {
+    const rows = branchTotals([emp("Rep1", "b1", "rep"), emp("Mgr1", "b1", "branch_manager", { unexcusedLeaveDays: 1, leaveDays: 1 })], fb, new Map([["b1", ["Mgr1"]]]));
+    const [b1] = scoreBranches(rows, { minFeedbackSample: 10 });
+    expect(b1.grade).toBeNull();
+    expect(b1.status).toBe("insufficient_data");
+    expect(b1.note).toMatch(/second branch/);
+    expect(b1.components.phones).toBeNull();
+    expect(b1.components.feedback).not.toBeNull();
+    expect(b1.penalty).toBe(5);
+    expect(b1.visits).toBe(40);
   });
 });

@@ -37,14 +37,18 @@ export default async function LeavePage({ searchParams }: PageProps<"/admin/leav
     else s.noProof++;
     summary.set(r.employee_id, s);
   }
+  // A branch manager's own leave lowers their branch grade, so only Management / Super Admin manage it.
+  const isBM = profile.role === "branch_manager";
+  const managementOnly = (employeeId: string, role: string | undefined) => isBM && (role === "branch_manager" || employeeId === profile.employee_id);
+  const recordable = isBM ? lookups.employees.filter((e) => !managementOnly(e.id, e.scorecard_role)) : lookups.employees;
   const people = [...summary.values()].sort((a, b) => b.noProof - a.noProof || a.name.localeCompare(b.name));
 
   return (
     <>
       <PageHeader
         title="Staff leave"
-        description="Days off per sales rep. Sudden leave without proof lowers the Rep Scorecard grade; all days off lower what a rep is expected to sell."
-        actions={<RecordLeaveDialog employees={lookups.employees} branches={lookups.branches} today={todayColombo()} />}
+        description="Days off per sales rep and branch manager. Sudden leave without proof lowers the grade (a branch manager’s lowers the branch grade); all days off lower what is expected to be sold."
+        actions={<RecordLeaveDialog employees={recordable} branches={lookups.branches} today={todayColombo()} />}
       />
       <div className="mb-4 flex gap-3 rounded-xl border border-series-1/20 bg-blue-50/60 p-4 text-sm">
         <Info className="mt-0.5 size-4 shrink-0 text-series-1" />
@@ -54,6 +58,9 @@ export default async function LeavePage({ searchParams }: PageProps<"/admin/leav
           If the rep brings proof later, click <strong>Proof received</strong> and the penalty is removed. Keep the documents in the HR file – don&apos;t write medical details here.
         </p>
       </div>
+      <div className="-mt-2 mb-4 rounded-xl border border-border bg-card p-4 text-sm text-muted-foreground">
+        <strong className="text-foreground">Branch managers:</strong> the same rules apply, and their sudden leave without proof lowers the <strong className="text-foreground">branch grade</strong>. Only Management or a Super Admin can record or change a branch manager&apos;s leave – a branch manager cannot record their own.
+      </div>
       <FilterBar options={{ branches: lookups.branches, employees: lookups.employees }} values={filters} show={["range", "branch", "employee"]} defaultRange="30d" />
 
       {rows.length === 0 ? (
@@ -62,12 +69,12 @@ export default async function LeavePage({ searchParams }: PageProps<"/admin/leav
         </Panel>
       ) : (
         <>
-          <Panel title="Per sales rep" description="Days off in this period and the effect on the grade." bodyClassName="px-0 pb-0">
+          <Panel title="Per person" description="Days off in this period and the effect on the grade." bodyClassName="px-0 pb-0">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
                   <TableRow className="bg-muted/50 hover:bg-muted/50">
-                    <TableHead className="pl-5">Sales rep</TableHead>
+                    <TableHead className="pl-5">Employee</TableHead>
                     <TableHead className="text-right">Informed</TableHead>
                     <TableHead className="text-right">Sudden – proof</TableHead>
                     <TableHead className="text-right">Sudden – no proof</TableHead>
@@ -94,7 +101,7 @@ export default async function LeavePage({ searchParams }: PageProps<"/admin/leav
                 <TableHeader>
                   <TableRow className="bg-muted/50 hover:bg-muted/50">
                     <TableHead className="pl-5">Date</TableHead>
-                    <TableHead>Sales rep</TableHead>
+                    <TableHead>Employee</TableHead>
                     <TableHead>Type</TableHead>
                     <TableHead>Note</TableHead>
                     <TableHead>Recorded by</TableHead>
@@ -111,8 +118,14 @@ export default async function LeavePage({ searchParams }: PageProps<"/admin/leav
                       <TableCell className="text-sm text-muted-foreground">{r.profiles?.full_name ?? "—"}</TableCell>
                       <TableCell className="pr-5">
                         <div className="flex justify-end gap-1">
-                          {r.leave_type === "sudden" && <ProofButton id={r.id} proof={r.proof_received} />}
-                          <DeleteLeaveButton id={r.id} />
+                          {managementOnly(r.employee_id, r.employees?.scorecard_role) ? (
+                            <span className="text-xs text-muted-foreground">Management only</span>
+                          ) : (
+                            <>
+                              {r.leave_type === "sudden" && <ProofButton id={r.id} proof={r.proof_received} />}
+                              <DeleteLeaveButton id={r.id} />
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

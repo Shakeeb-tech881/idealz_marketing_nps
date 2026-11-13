@@ -52,6 +52,16 @@ tests/db/              database tests: migrations + RLS + submission run in PGli
 - Self-reported sales-step ticks are shown but not graded.
 - Upgrade an existing database with `scripts/upgrade-review-confirmation.sql`.
 
+## Who is graded
+
+- Each employee has a **Scorecard** setting (Settings → Employees): **Sales rep** (graded), **Branch manager** (graded on the whole branch) or **Management – not graded**. It follows the login automatically when an employee is linked to a Super Admin / Management / Branch Manager login.
+- Only sales reps appear on the Rep Scorecard and are used as peers for each other.
+- **Branch managers** are graded on their branch: same KPIs, weights and A+ … Fail bands, each branch compared with the average branch, sales per staff working day. Shown on the scorecard page and in Reports → Branch Manager Scorecard (Management and Super Admin only).
+- Every visit still counts in the branch totals, whoever served the customer.
+- Upgrade an existing database with `scripts/upgrade-scorecard-roles.sql`.
+- **Branch managers' leave**: recorded on Staff Leave like anyone else. Their sudden leave without proof takes 5 points a day (max 25) off the branch grade. Only Management / Super Admin can record or change a branch manager's leave (enforced in the database). Upgrade with `scripts/upgrade-branch-manager-leave.sql` (after `upgrade-scorecard-roles.sql`).
+- **One live branch**: branches are graded against each other, so no branch grade is shown until a second branch records 10+ visits; the branch's results and the manager's leave are still shown.
+
 ## Staff leave
 
 - **Staff Leave** (`/admin/leave`, managers): record days off per sales rep as *informed in advance*, *sudden – proof received* or *sudden – no proof* (tick + note; documents stay in the HR file).
