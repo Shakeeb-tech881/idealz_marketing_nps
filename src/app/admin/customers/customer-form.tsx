@@ -225,6 +225,8 @@ export function NewCustomerForm({ branches, employees, defaultBranch, today, def
       return;
     }
     toast.success("Customer saved");
+    // Clear the form so "Add customer" always opens blank, even if the browser keeps this page.
+    form.reset();
     router.push(`/admin/customers/${(res as { customerId: string }).customerId}`);
   }
 

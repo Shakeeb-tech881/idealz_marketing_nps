@@ -3,7 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { computeNps, npsFromTotals, pct, type NpsResult } from "@/lib/nps";
 import { rpcArgs, type AnalyticsFilters } from "@/lib/analytics/filters";
 import { countThemes } from "@/lib/analytics/themes";
-import { branchTotals, scoreBranches, scoreReps, type BranchFeedback, type BranchScore, type RepKpiTotals, type RepScore, type ScorecardRole } from "@/lib/kpi";
+import { branchTotals, scoreBranches, scoreManagers, scoreReps, type BranchFeedback, type BranchScore, type ManagerInput, type ManagerScore, type RepKpiTotals, type RepScore, type ScorecardRole } from "@/lib/kpi";
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
@@ -367,6 +367,8 @@ export interface Scorecard {
   notGraded: NotGradedPerson[];
   /** Every branch graded against the average branch (null when not requested). */
   branches: BranchScore[] | null;
+  /** Branch managers: 70% branch result + 30% own sales (null when not requested). */
+  managers: ManagerScore[] | null;
 }
 
 /**
@@ -384,17 +386,29 @@ export async function getScorecard(
   const notGraded: NotGradedPerson[] = employees
     .filter((e) => e.scorecardRole !== "rep" && (e.visits > 0 || e.isActive))
     .map((e) => ({ employeeId: e.employeeId, name: e.name, branchName: e.branchName, role: e.scorecardRole as NotGradedPerson["role"], visits: e.visits, sales: e.sales }));
-  if (!opts.withBranches) return { reps, notGraded, branches: null };
-  return { reps, notGraded, branches: await getBranchScorecard(sb, f, minFeedbackSample, f.branch ? undefined : employees) };
+  if (!opts.withBranches) return { reps, notGraded, branches: null, managers: null };
+  const { branches, managers } = await getBranchScorecard(sb, f, minFeedbackSample, f.branch ? undefined : employees);
+  return { reps, notGraded, branches, managers };
 }
 
-/** Branch scorecard: always all branches, compared with each other (the branch filter does not apply). */
-export async function getBranchScorecard(sb: SupabaseClient, f: AnalyticsFilters, minFeedbackSample: number, allEmployees?: EmployeeTotals[]): Promise<BranchScore[]> {
-  const [employees, branchPerf, mgrRes] = await Promise.all([
+/**
+ * Branch scorecard and branch-manager grades: always all branches, compared with each
+ * other (the branch filter does not apply). A manager's grade is 70% branch result +
+ * 30% their own sales compared with the branch's reps.
+ */
+export async function getBranchScorecard(
+  sb: SupabaseClient,
+  f: AnalyticsFilters,
+  minFeedbackSample: number,
+  allEmployees?: EmployeeTotals[],
+): Promise<{ branches: BranchScore[]; managers: ManagerScore[] }> {
+  const [employees, branchPerf, mgrRes, branchRes] = await Promise.all([
     allEmployees ?? loadEmployeeTotals(sb, f, minFeedbackSample, null),
     getBranchPerformance(sb, { ...f, branch: null, surveyType: null, category: null }),
     sb.from("profiles").select("full_name, branch_id, employee_id").eq("role", "branch_manager").eq("is_active", true),
+    sb.from("branches").select("id, name"),
   ]);
+  const branchNames = new Map((unwrap(branchRes, "branches") as { id: string; name: string }[]).map((b) => [b.id, b.name]));
   const feedback = new Map<string, BranchFeedback>(branchPerf.map((b) => [b.branchId, { responses: b.nps.total, avgStaffRating: b.avgStaffRating, nps: b.nps.nps }]));
   const managers = new Map<string, string[]>();
   const add = (branchId: string | null, name: string) => {
@@ -405,10 +419,22 @@ export async function getBranchScorecard(sb: SupabaseClient, f: AnalyticsFilters
   };
   for (const e of employees) if (e.scorecardRole === "branch_manager" && e.isActive) add(e.branchId, e.name);
   const managerEmployeeIds = new Set(employees.filter((e) => e.scorecardRole === "branch_manager").map((e) => e.employeeId));
+  const unlinked: ManagerInput[] = [];
   for (const p of (unwrap(mgrRes, "branch managers") as { full_name: string; branch_id: string | null; employee_id: string | null }[])) {
-    if (!p.employee_id || !managerEmployeeIds.has(p.employee_id)) add(p.branch_id, p.full_name);
+    if (!p.employee_id || !managerEmployeeIds.has(p.employee_id)) {
+      add(p.branch_id, p.full_name);
+      if (p.branch_id) unlinked.push({ totals: null, name: p.full_name, branchId: p.branch_id, branchName: branchNames.get(p.branch_id) ?? "", isActive: true });
+    }
   }
-  return scoreBranches(branchTotals(employees, feedback, managers), { minFeedbackSample });
+  const branches = scoreBranches(branchTotals(employees, feedback, managers), { minFeedbackSample });
+  const managerInputs: ManagerInput[] = [
+    ...employees
+      .filter((e) => e.scorecardRole === "branch_manager" && (e.isActive || e.visits > 0))
+      .map((e) => ({ totals: e, name: e.name, branchId: e.branchId, branchName: e.branchName, isActive: e.isActive })),
+    ...unlinked,
+  ];
+  const reps = employees.filter((e) => e.scorecardRole === "rep");
+  return { branches, managers: scoreManagers(managerInputs, reps, branches, { minFeedbackSample }) };
 }
 
 /** Sales reps only (branch managers and management are left out). */

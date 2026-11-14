@@ -54,13 +54,17 @@ tests/db/              database tests: migrations + RLS + submission run in PGli
 
 ## Who is graded
 
-- Each employee has a **Scorecard** setting (Settings → Employees): **Sales rep** (graded), **Branch manager** (graded on the whole branch) or **Management – not graded**. It follows the login automatically when an employee is linked to a Super Admin / Management / Branch Manager login.
+- Each employee has a **Scorecard** setting (Settings → Employees): **Sales rep** (graded), **Branch manager** (70% branch + 30% own sales) or **Management – not graded**. It follows the login automatically when an employee is linked to a Super Admin / Management / Branch Manager login.
 - Only sales reps appear on the Rep Scorecard and are used as peers for each other.
-- **Branch managers** are graded on their branch: same KPIs, weights and A+ … Fail bands, each branch compared with the average branch, sales per staff working day. Shown on the scorecard page and in Reports → Branch Manager Scorecard (Management and Super Admin only).
+- **Branch managers**: grade = **70% branch result + 30% own sales**, then minus their own sudden leave without proof.
+  - *Branch result*: the whole branch with the same KPIs, weights and A+ … Fail bands, compared with the average branch, sales per staff working day. Shared by every manager of that branch.
+  - *Own sales*: the manager's own tracked visits scored exactly like a sales rep, compared with the branch's graded reps (the company's when the branch has fewer than two). Managers are never peers for the reps, so a manager's sales never change a rep's grade.
+  - A grade needs both parts: with fewer than 10 own visits the manager is *Low activity*; while the branch has no result (e.g. one live branch) the manager shows *Not graded* with the reason. A branch-manager login not linked to an employee record can't have own sales and says so.
+  - Shown on the scorecard page and in Reports → **Branch Manager Scorecard** and **Branch Results** (Management and Super Admin only).
 - Every visit still counts in the branch totals, whoever served the customer.
 - Upgrade an existing database with `scripts/upgrade-scorecard-roles.sql`.
-- **Branch managers' leave**: recorded on Staff Leave like anyone else. Their sudden leave without proof takes 5 points a day (max 25) off the branch grade. Only Management / Super Admin can record or change a branch manager's leave (enforced in the database). Upgrade with `scripts/upgrade-branch-manager-leave.sql` (after `upgrade-scorecard-roles.sql`).
-- **One live branch**: branches are graded against each other, so no branch grade is shown until a second branch records 10+ visits; the branch's results and the manager's leave are still shown.
+- **Branch managers' leave**: recorded on Staff Leave like anyone else. Their sudden leave without proof takes 5 points a day (max 25) off their own manager grade (not the branch result). Only Management / Super Admin can record or change a branch manager's leave (enforced in the database). Upgrade with `scripts/upgrade-branch-manager-leave.sql` (after `upgrade-scorecard-roles.sql`).
+- **One live branch**: branches are graded against each other, so no branch grade is shown until a second branch records 10+ visits; the branch's results, each manager's own-sales score and their leave are still shown.
 
 ## Staff leave
 

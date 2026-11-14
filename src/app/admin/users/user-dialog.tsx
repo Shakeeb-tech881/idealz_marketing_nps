@@ -72,7 +72,7 @@ export function UserDialog({ user, branches, employees }: { user?: Profile; bran
   const [open, setOpen] = useState(false);
   const [method, setMethod] = useState<"password" | "email">("password");
   const [creds, setCreds] = useState<{ email: string; password: string } | null>(null);
-  const [v, setV] = useState({
+  const initial = () => ({
     email: user?.email ?? "",
     full_name: user?.full_name ?? "",
     role: (user?.role ?? "staff") as AppRole,
@@ -80,6 +80,7 @@ export function UserDialog({ user, branches, employees }: { user?: Profile; bran
     employee_id: user?.employee_id ?? "",
     is_active: user?.is_active ?? true,
   });
+  const [v, setV] = useState(initial);
   const [errors, setErrors] = useState<Record<string, string[] | undefined>>({});
   const [pending, start] = useTransition();
   const router = useRouter();
@@ -128,7 +129,14 @@ export function UserDialog({ user, branches, employees }: { user?: Profile; bran
         router.refresh();
       }}
     />
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        // Start from a blank form (or the saved values when editing) every time the dialog opens.
+        if (o) { setV(initial()); setErrors({}); setMethod("password"); }
+        setOpen(o);
+      }}
+    >
       <DialogTrigger render={user ? <Button variant="ghost" size="sm" /> : <Button />}>
         {user ? <><Pencil data-icon="inline-start" /> Edit</> : <><UserPlus data-icon="inline-start" /> Add user</>}
       </DialogTrigger>

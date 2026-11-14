@@ -8,7 +8,7 @@ import { NON_PURCHASE_REASON_LABELS, SURVEY_TYPE_LABELS, type NonPurchaseReason,
 import { INVITATION_STATUS_LABELS, RESOLUTION_LABELS, type InvitationStatus, type Profile, type ResolutionStatus } from "@/lib/types";
 import { AuthorisationError, canSeeContactDetails } from "@/lib/auth";
 import { getBranchPerformance, getEmployeePerformance, getNonPurchaseReasons, getBranchScorecard, getOverview, getRepScorecard, getResponseRateTrend, getTrend } from "@/server/services/analytics";
-import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_WEIGHTS, LEAVE_PENALTY_PER_DAY, MAX_LEAVE_PENALTY, MIN_GRADED_VISITS, repStatusText, type KpiKey } from "@/lib/kpi";
+import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_WEIGHTS, LEAVE_PENALTY_PER_DAY, MANAGER_WEIGHTS, MAX_LEAVE_PENALTY, MIN_GRADED_VISITS, repStatusText, type KpiKey } from "@/lib/kpi";
 import { SALES_STEPS } from "@/lib/types";
 import { REPORT_TYPES, type ReportData, type ReportType } from "./definitions";
 import { describeInsightFilters, parseInsightFilters } from "@/lib/insights/filters";
@@ -261,7 +261,7 @@ export async function buildReport(
     case "branch_scorecard": {
       // Branches are compared with each other, which needs every branch's data.
       if (actor.role !== "super_admin" && actor.role !== "management") throw new AuthorisationError("The branch scorecard is for Management and Super Admin.");
-      const branches = await getBranchScorecard(sb, f, minEmployeeSample);
+      const { branches } = await getBranchScorecard(sb, f, minEmployeeSample);
       const order = { graded: 0, insufficient_data: 1, low_activity: 2 } as const;
       const sorted = [...branches].sort((a, b) => order[a.status] - order[b.status] || (b.score ?? 0) - (a.score ?? 0) || a.name.localeCompare(b.name));
       const keys = Object.keys(KPI_WEIGHTS) as KpiKey[];
@@ -278,7 +278,6 @@ export async function buildReport(
           { key: "visits", label: "Visits" }, { key: "sales", label: "Sales" }, { key: "conv", label: "Conv. %" },
           { key: "devices", label: "Devices" }, { key: "comm", label: "Comm. acc. Rs." }, { key: "noncomm", label: "Non-comm. acc. Rs." },
           { key: "reviews", label: "Reviews confirmed" }, { key: "rating", label: "Staff rating" }, { key: "nps", label: "NPS" },
-          { key: "mgr_off", label: "Manager days off" }, { key: "mgr_noproof", label: "Manager sudden, no proof" }, { key: "penalty", label: "Leave penalty" },
           { key: "status", label: "Note", width: 30 },
         ],
         rows: sorted.map((b) => ({
@@ -299,20 +298,72 @@ export async function buildReport(
           reviews: b.reviewsConfirmed,
           rating: b.avgStaffRating,
           nps: formatNps(b.nps),
-          mgr_off: b.managerLeave.informed + b.managerLeave.suddenProof + b.managerLeave.suddenNoProof,
-          mgr_noproof: b.managerLeave.suddenNoProof,
-          penalty: b.penalty ? -b.penalty : "",
           status: b.status === "low_activity" ? `${b.visits} visit${b.visits === 1 ? "" : "s"} (needs ${MIN_GRADED_VISITS})` : (b.note ?? repStatusText(b) ?? ""),
         })),
         rowTone: sorted.map((b) => (b.status === "low_activity" ? "danger" : null)),
         pdfFontSize: 6,
         notes: [
-          `Branch managers are graded on their whole branch with the same KPIs, weights and grades as sales reps. Management and Super Admin are not graded.`,
+          `The branch result is ${MANAGER_WEIGHTS.branch}% of each branch manager's grade (the other ${MANAGER_WEIGHTS.own}% is their own sales – see the Branch Manager Scorecard). Same KPIs, weights and grades as sales reps. Management and Super Admin are not graded.`,
           `Each branch is compared with the average branch (average = ${AVERAGE_SCORE}, one third above = 100). Device sales, accessories (commission x${COMMISSION_ACCESSORY_WEIGHT}) and confirmed Google reviews are per staff working day, so a bigger branch does not score higher just by size.`,
-          `LEAVE: the branch manager's sudden leave without proof takes ${LEAVE_PENALTY_PER_DAY} points a day off the branch grade (max ${MAX_LEAVE_PENALTY}); informed leave and sudden leave with proof cost nothing. Only Management / Super Admin record a branch manager's leave.`,
+          `Every staff member's leave lowers the branch's staff days. A branch manager's sudden leave without proof is taken off that manager's own grade, not the branch result.`,
           `Branches are compared with each other, so no branch is graded until at least two branches have ${MIN_GRADED_VISITS}+ visits.`,
           `Staff days = the working days (period minus leave) of the reps and branch managers who recorded visits. Every visit counts in the branch totals, including the branch manager's own and Management's.`,
           `Customer feedback = staff rating (60%) + NPS (40%) of all the branch's survey responses, only with ${minEmployeeSample}+ responses. Fewer than ${MIN_GRADED_VISITS} visits: LOW ACTIVITY, not graded. Grades: ${GRADE_BANDS.map((b) => (b.grade === "Fail" ? `Fail below ${GRADE_BANDS[GRADE_BANDS.length - 2].min}` : `${b.grade} ${b.min}+`)).join(", ")}.`,
+        ],
+      };
+    }
+    case "manager_scorecard": {
+      if (actor.role !== "super_admin" && actor.role !== "management") throw new AuthorisationError("The branch manager scorecard is for Management and Super Admin.");
+      const { managers } = await getBranchScorecard(sb, f, minEmployeeSample);
+      const sorted = [...managers].sort((a, b) => Number(b.grade !== null) - Number(a.grade !== null) || (b.score ?? 0) - (a.score ?? 0) || a.branchName.localeCompare(b.branchName) || a.name.localeCompare(b.name));
+      const keys = Object.keys(KPI_WEIGHTS) as KpiKey[];
+      const KPI_SHORT: Record<KpiKey, string> = { feedback: "Feedback", phones: "Devices", accessories: "Access.", conversion: "Conversion", reviews: "Reviews" };
+      let rank = 0;
+      return {
+        title: meta.label,
+        subtitle: `${formatDate(f.from)} – ${formatDate(f.to)} · All branches`,
+        columns: [
+          { key: "rank", label: "#" }, { key: "manager", label: "Branch manager", width: 20 }, { key: "branch", label: "Branch", width: 14 },
+          { key: "grade", label: "Grade", width: 14 }, { key: "score", label: "Score" },
+          { key: "branch_score", label: `Branch result ${MANAGER_WEIGHTS.branch}%` }, { key: "own_score", label: `Own sales ${MANAGER_WEIGHTS.own}%` },
+          { key: "before", label: "Before leave" }, { key: "penalty", label: "Leave penalty" },
+          ...keys.map((k) => ({ key: `own_${k}`, label: `Own ${KPI_SHORT[k]}` })),
+          { key: "visits", label: "Own visits" }, { key: "sales", label: "Own sales" }, { key: "devices", label: "Own devices" },
+          { key: "comm", label: "Own comm. acc. Rs." }, { key: "noncomm", label: "Own non-comm. acc. Rs." }, { key: "reviews", label: "Own reviews confirmed" },
+          { key: "compared", label: "Own sales vs" },
+          { key: "off", label: "Days off" }, { key: "noproof", label: "Sudden, no proof" },
+          { key: "status", label: "Note", width: 34 },
+        ],
+        rows: sorted.map((m) => ({
+          rank: m.grade ? ++rank : "",
+          manager: m.name,
+          branch: m.branchName,
+          grade: m.grade ?? (m.status === "low_activity" ? "LOW ACTIVITY" : "Not graded"),
+          score: m.score,
+          branch_score: m.branchScore,
+          own_score: m.ownScore,
+          before: m.scoreBeforePenalty,
+          penalty: m.penalty ? -m.penalty : "",
+          ...Object.fromEntries(keys.map((k) => [`own_${k}`, m.own?.components[k] == null ? "" : Math.round(m.own.components[k]!)])),
+          visits: m.own?.visits ?? "",
+          sales: m.own?.sales ?? "",
+          devices: m.own ? m.own.androidPhones + m.own.applePhones + m.own.otherDevices : "",
+          comm: m.own?.commissionAccessoriesValue ?? "",
+          noncomm: m.own?.nonCommissionAccessoriesValue ?? "",
+          reviews: m.own?.reviewsConfirmed ?? "",
+          compared: m.own?.comparedWith === "branch" ? "Branch reps" : m.own?.comparedWith === "company" ? "Company reps" : "",
+          off: m.leave.informed + m.leave.suddenProof + m.leave.suddenNoProof,
+          noproof: m.leave.suddenNoProof,
+          status: m.note ?? "",
+        })),
+        rowTone: sorted.map((m) => (m.status === "low_activity" ? "danger" : null)),
+        pdfFontSize: 6,
+        notes: [
+          `GRADE = ${MANAGER_WEIGHTS.branch}% branch result + ${MANAGER_WEIGHTS.own}% own sales, then minus the leave penalty. A grade needs both parts; otherwise the Note says what is missing.`,
+          `BRANCH RESULT: the whole branch compared with the average branch (average = ${AVERAGE_SCORE}), sales per staff working day. Shared by every manager of that branch. Grades start when at least two branches have ${MIN_GRADED_VISITS}+ visits.`,
+          `OWN SALES: the manager's own tracked visits scored exactly like a sales rep – customer feedback ${KPI_WEIGHTS.feedback}%, devices ${KPI_WEIGHTS.phones}%, accessories ${KPI_WEIGHTS.accessories}% (commission x${COMMISSION_ACCESSORY_WEIGHT}), conversion ${KPI_WEIGHTS.conversion}%, confirmed Google reviews ${KPI_WEIGHTS.reviews}% – compared with the branch's graded reps (the company's when the branch has fewer than two). Needs ${MIN_GRADED_VISITS}+ own visits; feedback needs ${minEmployeeSample}+ own survey responses.`,
+          `LEAVE: each day of the manager's own sudden leave without proof takes ${LEAVE_PENALTY_PER_DAY} points off (max ${MAX_LEAVE_PENALTY}); informed leave and sudden leave with proof cost nothing. Only Management / Super Admin record a branch manager's leave.`,
+          `Grades: ${GRADE_BANDS.map((b) => (b.grade === "Fail" ? `Fail below ${GRADE_BANDS[GRADE_BANDS.length - 2].min}` : `${b.grade} ${b.min}+`)).join(", ")}.`,
         ],
       };
     }

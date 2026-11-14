@@ -189,49 +189,62 @@ export function weightedScore(components: Record<KpiKey, number | null>): number
   return Math.round((total / weights) * 10) / 10;
 }
 
+const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
+
+/**
+ * The reps someone is compared with: graded reps in the same showroom when there
+ * are at least two, otherwise every graded rep in the company.
+ */
+function peerGroup<T extends RepKpiTotals>(r: Pick<RepKpiTotals, "branchId">, graded: T[]): { peers: T[]; comparedWith: "branch" | "company" } {
+  const branchPeers = graded.filter((p) => p.branchId === r.branchId);
+  return branchPeers.length >= 2 ? { peers: branchPeers, comparedWith: "branch" } : { peers: graded, comparedWith: "company" };
+}
+
+/** Scores one person against a peer group (the person may or may not be one of the peers). */
+function scoreAgainst(r: RepKpiTotals, peers: RepKpiTotals[], comparedWith: "branch" | "company", opts: { minFeedbackSample: number; minVisits?: number }): RepScore {
+  const minVisits = opts.minVisits ?? MIN_GRADED_VISITS;
+  const empty: Record<KpiKey, number | null> = { feedback: null, phones: null, accessories: null, conversion: null, reviews: null };
+  const penalty = leavePenalty(r.unexcusedLeaveDays);
+  if (r.visits < minVisits) return { ...r, graded: false, status: "low_activity", components: empty, score: null, scoreBeforePenalty: null, penalty, grade: null, comparedWith: null, recordingRate: null };
+
+  // Average visits per working day of the other people in the comparison (0 when there are none).
+  const othersVpd = (x: RepKpiTotals) => mean(peers.filter((p) => p.employeeId !== x.employeeId).map(visitsPerDay));
+  const peerMeasures = peers.map((p) => measures(p, othersVpd(p)));
+  const avg = (key: keyof ReturnType<typeof measures>) => mean(peerMeasures.map((pm) => pm[key]));
+  const myOthersVpd = othersVpd(r);
+  const m = measures(r, myOthersVpd);
+  const components: Record<KpiKey, number | null> = {
+    feedback: feedbackScore(r, opts.minFeedbackSample),
+    phones: relativeScore(m.phones, avg("phones")),
+    accessories: relativeScore(m.accessories, avg("accessories")),
+    conversion: relativeScore(m.conversion, avg("conversion")),
+    reviews: relativeScore(m.reviews, avg("reviews")),
+  };
+  for (const k of Object.keys(components) as KpiKey[]) {
+    if (components[k] !== null) components[k] = Math.round(components[k]! * 10) / 10;
+  }
+  const before = weightedScore(components);
+  const score = before === null ? null : Math.round(Math.max(0, before - penalty) * 10) / 10;
+  return {
+    ...r,
+    graded: score !== null,
+    status: score === null ? "insufficient_data" : "graded",
+    components,
+    score,
+    scoreBeforePenalty: before,
+    penalty,
+    grade: score === null ? null : gradeFor(score),
+    comparedWith,
+    recordingRate: myOthersVpd > 0 ? Math.round((visitsPerDay(r) / myOthersVpd) * 100) / 100 : null,
+  };
+}
+
 export function scoreReps(rows: RepKpiTotals[], opts: { minFeedbackSample: number; minVisits?: number }): RepScore[] {
   const minVisits = opts.minVisits ?? MIN_GRADED_VISITS;
   const graded = rows.filter((r) => r.visits >= minVisits);
-  const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
-
   return rows.map((r) => {
-    const empty: Record<KpiKey, number | null> = { feedback: null, phones: null, accessories: null, conversion: null, reviews: null };
-    const penalty = leavePenalty(r.unexcusedLeaveDays);
-    if (r.visits < minVisits) return { ...r, graded: false, status: "low_activity", components: empty, score: null, scoreBeforePenalty: null, penalty, grade: null, comparedWith: null, recordingRate: null };
-
-    const branchPeers = graded.filter((p) => p.branchId === r.branchId);
-    const useBranch = branchPeers.length >= 2;
-    const peers = useBranch ? branchPeers : graded;
-    // Average visits per working day of the other reps in the comparison (0 when there are none).
-    const othersVpd = (x: RepKpiTotals) => mean(peers.filter((p) => p.employeeId !== x.employeeId).map(visitsPerDay));
-    const peerMeasures = peers.map((p) => measures(p, othersVpd(p)));
-    const avg = (key: keyof ReturnType<typeof measures>) => mean(peerMeasures.map((pm) => pm[key]));
-    const myOthersVpd = othersVpd(r);
-    const m = measures(r, myOthersVpd);
-    const components: Record<KpiKey, number | null> = {
-      feedback: feedbackScore(r, opts.minFeedbackSample),
-      phones: relativeScore(m.phones, avg("phones")),
-      accessories: relativeScore(m.accessories, avg("accessories")),
-      conversion: relativeScore(m.conversion, avg("conversion")),
-      reviews: relativeScore(m.reviews, avg("reviews")),
-    };
-    for (const k of Object.keys(components) as KpiKey[]) {
-      if (components[k] !== null) components[k] = Math.round(components[k]! * 10) / 10;
-    }
-    const before = weightedScore(components);
-    const score = before === null ? null : Math.round(Math.max(0, before - penalty) * 10) / 10;
-    return {
-      ...r,
-      graded: score !== null,
-      status: score === null ? "insufficient_data" : "graded",
-      components,
-      score,
-      scoreBeforePenalty: before,
-      penalty,
-      grade: score === null ? null : gradeFor(score),
-      comparedWith: useBranch ? "branch" : "company",
-      recordingRate: myOthersVpd > 0 ? Math.round((visitsPerDay(r) / myOthersVpd) * 100) / 100 : null,
-    };
+    const { peers, comparedWith } = peerGroup(r, graded);
+    return scoreAgainst(r, peers, comparedWith, opts);
   });
 }
 
@@ -248,8 +261,8 @@ export function repStatusText(r: Pick<RepScore, "status" | "visits" | "leaveDays
 // ---------------------------------------------------------------- branch scorecard (branch managers)
 
 /**
- * Branch managers are graded on their whole branch, with the same KPIs, weights
- * and A+ … Fail bands as reps. Each branch is compared with the average branch:
+ * Branch result: every branch graded with the same KPIs, weights and A+ … Fail
+ * bands as reps (70% of a branch manager's grade, see scoreManagers). Each branch is compared with the average branch:
  * matching the average scores 75. Volumes are per staff working day (the working
  * days of the reps and branch managers who recorded visits), so a branch with
  * more staff doesn't win just by being bigger.
@@ -267,7 +280,7 @@ export interface BranchKpiTotals extends RepKpiTotals {
   staffCount: number;
   /** Sum of those people's working days (sales are compared per staff day). */
   staffDays: number;
-  /** The branch manager's own days off – their sudden leave without proof lowers the branch grade. */
+  /** The branch managers' own days off (shown with the branch; the penalty is on each manager's grade). */
   managerLeave: { informed: number; suddenProof: number; suddenNoProof: number };
 }
 
@@ -333,8 +346,9 @@ export function branchTotals(
       // Branch volumes are per staff working day (everyone's leave is already taken out of staffDays).
       periodDays: Math.max(1, staffDays),
       leaveDays: 0,
-      // The branch manager's sudden leave without proof: same penalty as a rep (5 points a day, at most 25).
-      unexcusedLeaveDays: managerLeave.suddenNoProof,
+      // The branch result has no leave penalty: each branch manager's own sudden leave
+      // without proof comes off that manager's grade (see scoreManagers).
+      unexcusedLeaveDays: 0,
       informedLeaveDays: managerLeave.informed,
       excusedSuddenDays: managerLeave.suddenProof,
       managers: managers.get(branchId) ?? [],
@@ -370,5 +384,138 @@ export function scoreBranches(rows: BranchKpiTotals[], opts: { minFeedbackSample
       recordingRate: null,
       note: `Not graded yet: branches are compared with each other, so grades start when a second branch records ${minVisits}+ visits.`,
     };
+  });
+}
+
+// ---------------------------------------------------------------- branch manager grade
+
+/**
+ * A branch manager's grade = 70% branch result + 30% their own sales.
+ *
+ * - Branch result: the branch score above (the whole branch, compared with the average branch).
+ * - Own sales: the manager's own visits, devices, accessories, conversion, Google reviews and
+ *   customer feedback, scored exactly like a sales rep and compared with the branch's graded
+ *   reps (the whole company's when the branch has fewer than two). The manager is never one
+ *   of the reps they are compared with.
+ * - Then the manager's own sudden leave without proof: 5 points a day, at most 25.
+ *
+ * Both parts must be measurable for a grade: a 70/30 grade is never shown with one part missing.
+ */
+export const MANAGER_WEIGHTS = { branch: 70, own: 30 } as const;
+
+/**
+ * graded             – A+ … Fail
+ * waiting_for_branch – the branch result has no grade yet (e.g. only one branch is live, or the branch is low activity)
+ * low_activity       – fewer than MIN_GRADED_VISITS of the manager's own tracked visits
+ * insufficient_data  – own visits are enough, but too few own KPIs can be measured
+ * no_employee        – the login is not linked to an employee record, so own sales can't be counted
+ */
+export type ManagerStatus = "graded" | "waiting_for_branch" | "low_activity" | "insufficient_data" | "no_employee";
+
+export interface ManagerInput {
+  /** Null when the branch-manager login has no employee record linked. */
+  totals: RepKpiTotals | null;
+  name: string;
+  branchId: string;
+  branchName: string;
+  isActive: boolean;
+}
+
+export interface ManagerScore {
+  employeeId: string | null;
+  name: string;
+  branchId: string;
+  branchName: string;
+  isActive: boolean;
+  status: ManagerStatus;
+  /** Why there is no grade (null when graded). */
+  note: string | null;
+  /** Branch result 0–100 (null when the branch has no grade yet). */
+  branchScore: number | null;
+  branchGrade: Grade | null;
+  /** The manager's own sales scored like a rep (null without an employee record). */
+  own: RepScore | null;
+  /** Own-sales score 0–100 before any leave penalty. */
+  ownScore: number | null;
+  /** 70% branch + 30% own, before the leave penalty. */
+  scoreBeforePenalty: number | null;
+  penalty: number;
+  score: number | null;
+  grade: Grade | null;
+  leave: { informed: number; suddenProof: number; suddenNoProof: number };
+}
+
+const round1 = (n: number) => Math.round(n * 10) / 10;
+
+export function combineManagerScore(branchScore: number, ownScore: number): number {
+  return round1((MANAGER_WEIGHTS.branch * branchScore + MANAGER_WEIGHTS.own * ownScore) / 100);
+}
+
+/**
+ * @param managers  every branch manager (with their own totals when linked to an employee)
+ * @param reps      every sales rep's totals (company-wide) – the people managers are compared with
+ * @param branches  the scored branches
+ */
+export function scoreManagers(
+  managers: ManagerInput[],
+  reps: RepKpiTotals[],
+  branches: BranchScore[],
+  opts: { minFeedbackSample: number; minVisits?: number },
+): ManagerScore[] {
+  const minVisits = opts.minVisits ?? MIN_GRADED_VISITS;
+  const gradedReps = reps.filter((r) => r.visits >= minVisits);
+  const branchById = new Map(branches.map((b) => [b.branchId, b]));
+
+  return managers.map((m) => {
+    const branch = branchById.get(m.branchId);
+    const branchScore = branch?.grade ? branch.score : null;
+    const t = m.totals;
+    const leave = { informed: t?.informedLeaveDays ?? 0, suddenProof: t?.excusedSuddenDays ?? 0, suddenNoProof: t?.unexcusedLeaveDays ?? 0 };
+    const penalty = leavePenalty(leave.suddenNoProof);
+    const base = {
+      employeeId: t?.employeeId ?? null,
+      name: m.name,
+      branchId: m.branchId,
+      branchName: m.branchName,
+      isActive: m.isActive,
+      branchScore,
+      branchGrade: branch?.grade ?? null,
+      leave,
+      penalty,
+    };
+
+    let own: RepScore | null = null;
+    if (t) {
+      const { peers, comparedWith } = peerGroup(t, gradedReps);
+      own = scoreAgainst(t, peers, comparedWith, opts);
+    }
+    const ownScore = own?.scoreBeforePenalty ?? null;
+
+    const reasons: string[] = [];
+    let status: ManagerStatus = "graded";
+    const flag = (st: ManagerStatus, why: string) => {
+      if (status === "graded") status = st;
+      reasons.push(why);
+    };
+    if (!t) flag("no_employee", "Own sales can't be counted: link this login to an employee record (Users → Edit).");
+    if (branchScore === null) {
+      flag(
+        "waiting_for_branch",
+        !branch
+          ? "Branch result: no tracked visits at this branch yet."
+          : branch.status === "low_activity"
+            ? `Branch result: the branch has ${branch.visits} tracked visit${branch.visits === 1 ? "" : "s"}, needs ${minVisits}.`
+            : (branch.note ?? "Branch result: not enough measurable KPIs yet."),
+      );
+    }
+    if (own?.status === "low_activity") flag("low_activity", `Own sales: ${own.visits} tracked visit${own.visits === 1 ? "" : "s"}, needs ${minVisits}.`);
+    else if (own && ownScore === null) flag("insufficient_data", "Own sales: not enough measurable KPIs yet.");
+
+    if (status !== "graded" || branchScore === null || ownScore === null) {
+      return { ...base, status, note: reasons.join(" "), own, ownScore, scoreBeforePenalty: null, score: null, grade: null };
+    }
+    const before = combineManagerScore(branchScore, ownScore);
+    const score = round1(Math.max(0, before - penalty));
+    return { ...base, status, note: null, own, ownScore, scoreBeforePenalty: before, score, grade: gradeFor(score) };
   });
 }

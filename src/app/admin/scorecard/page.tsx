@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { AlertTriangle, Award, Building2, Download, Info } from "lucide-react";
+import { AlertTriangle, Award, Building2, Download, Info, UserCog } from "lucide-react";
 import { MANAGERS, requirePageRole } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { parseFilters } from "@/lib/analytics/filters";
@@ -7,7 +7,7 @@ import { getSettings } from "@/lib/settings";
 import { formatNps } from "@/lib/nps";
 import { formatLKR, formatRating } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_LABELS, KPI_WEIGHTS, LEAVE_PENALTY_PER_DAY, LOW_RECORDING_RATE, MAX_LEAVE_PENALTY, MIN_GRADED_VISITS, repStatusText, type BranchScore, type Grade, type KpiKey, type RepScore } from "@/lib/kpi";
+import { AVERAGE_SCORE, COMMISSION_ACCESSORY_WEIGHT, GRADE_BANDS, KPI_LABELS, KPI_WEIGHTS, LEAVE_PENALTY_PER_DAY, LOW_RECORDING_RATE, MANAGER_WEIGHTS, MAX_LEAVE_PENALTY, MIN_GRADED_VISITS, repStatusText, type BranchScore, type Grade, type KpiKey, type ManagerScore, type RepScore } from "@/lib/kpi";
 import { SALES_STEPS } from "@/lib/types";
 import { getScorecard } from "@/server/services/analytics";
 import { getLookups } from "@/server/services/lookups";
@@ -64,8 +64,8 @@ function BranchPanel({ graded, other }: { graded: BranchScore[]; other: BranchSc
   return (
     <Panel
       className="mb-4"
-      title={<span className="inline-flex items-center gap-2"><Building2 className="size-4 text-series-1" aria-hidden /> Branch managers – graded on their branch</span>}
-      description={`Every branch compared with the average branch (= ${AVERAGE_SCORE}). Sales, accessories and reviews are per staff working day, so bigger branches don't win just by size. The branch manager's sudden leave without proof takes ${LEAVE_PENALTY_PER_DAY} points a day off the branch grade (at most ${MAX_LEAVE_PENALTY}). The branch filter does not apply here.`}
+      title={<span className="inline-flex items-center gap-2"><Building2 className="size-4 text-series-1" aria-hidden /> Branch results</span>}
+      description={`Every branch compared with the average branch (= ${AVERAGE_SCORE}). Sales, accessories and reviews are per staff working day, so bigger branches don't win just by size. This is ${MANAGER_WEIGHTS.branch}% of the branch manager's grade. The branch filter does not apply here.`}
       bodyClassName="px-0 pb-0"
     >
       <div className="overflow-x-auto">
@@ -83,9 +83,7 @@ function BranchPanel({ graded, other }: { graded: BranchScore[]; other: BranchSc
               ))}
               <TableHead className="text-right whitespace-nowrap">Staff</TableHead>
               <TableHead className="text-right whitespace-nowrap">Visits</TableHead>
-              <TableHead className="text-right whitespace-nowrap">Sales</TableHead>
-              <TableHead className="text-right whitespace-nowrap" title="Branch manager's days off: informed · sudden with proof · sudden without proof">Manager days off</TableHead>
-              <TableHead className="pr-5 text-right whitespace-nowrap">Leave penalty</TableHead>
+              <TableHead className="pr-5 text-right whitespace-nowrap">Sales</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -104,12 +102,73 @@ function BranchPanel({ graded, other }: { graded: BranchScore[]; other: BranchSc
                 ))}
                 <TableCell className="text-right tabular" title={`${b.staffDays} staff working days`}>{b.staffCount}</TableCell>
                 <TableCell className="text-right tabular">{b.visits}</TableCell>
-                <TableCell className="text-right tabular">{b.sales}</TableCell>
-                <TableCell className="text-right tabular" title={`Informed ${b.managerLeave.informed} · sudden with proof ${b.managerLeave.suddenProof} · sudden without proof ${b.managerLeave.suddenNoProof}`}>
-                  {b.managerLeave.informed + b.managerLeave.suddenProof + b.managerLeave.suddenNoProof}
-                  {b.managerLeave.suddenNoProof > 0 && <span className="ml-1 text-xs font-bold text-[#a52727]">({b.managerLeave.suddenNoProof} no proof)</span>}
+                <TableCell className="pr-5 text-right tabular">{b.sales}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </Panel>
+  );
+}
+
+function ManagerPanel({ managers }: { managers: ManagerScore[] }) {
+  const graded = managers.filter((m) => m.grade !== null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.name.localeCompare(b.name));
+  const other = managers.filter((m) => m.grade === null).sort((a, b) => a.branchName.localeCompare(b.branchName) || a.name.localeCompare(b.name));
+  return (
+    <Panel
+      className="mb-4"
+      title={<span className="inline-flex items-center gap-2"><UserCog className="size-4 text-series-1" aria-hidden /> Branch managers – {MANAGER_WEIGHTS.branch}% branch + {MANAGER_WEIGHTS.own}% own sales</span>}
+      description={`Branch result (below) counts ${MANAGER_WEIGHTS.branch}%. Own sales count ${MANAGER_WEIGHTS.own}%: the manager's own visits scored exactly like a sales rep, compared with the branch's graded reps (the whole company's when the branch has fewer than two). Then ${LEAVE_PENALTY_PER_DAY} points off per day of the manager's sudden leave without proof (at most ${MAX_LEAVE_PENALTY}). A grade needs both parts.`}
+      bodyClassName="px-0 pb-0"
+    >
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-muted/50 hover:bg-muted/50">
+              <TableHead className="w-12 pl-5">Rank</TableHead>
+              <TableHead>Branch manager</TableHead>
+              <TableHead className="text-center">Grade</TableHead>
+              <TableHead className="text-right">Score</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Branch result <span className="font-normal text-muted-foreground">{MANAGER_WEIGHTS.branch}%</span></TableHead>
+              <TableHead className="text-right whitespace-nowrap">Own sales <span className="font-normal text-muted-foreground">{MANAGER_WEIGHTS.own}%</span></TableHead>
+              {KPI_KEYS.map((k) => (
+                <TableHead key={k} className="text-right whitespace-nowrap" title={`Own ${KPI_LABELS[k].toLowerCase()} score (${KPI_WEIGHTS[k]}% of own sales)`}>
+                  Own {KPI_LABELS[k].toLowerCase()}
+                </TableHead>
+              ))}
+              <TableHead className="text-right whitespace-nowrap">Own visits</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Own sales</TableHead>
+              <TableHead className="text-right whitespace-nowrap">Days off</TableHead>
+              <TableHead className="pr-5 text-right whitespace-nowrap">Leave penalty</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {[...graded, ...other].map((m, i) => (
+              <TableRow key={`${m.employeeId ?? m.name}-${m.branchId}`}>
+                <TableCell className="pl-5 tabular text-muted-foreground">{m.grade ? i + 1 : ""}</TableCell>
+                <TableCell>
+                  <p className="font-medium">
+                    {m.name}
+                    {!m.isActive && <span className="ml-2 text-[10px] text-muted-foreground uppercase">Inactive</span>}
+                  </p>
+                  <p className="text-xs text-muted-foreground">{m.branchName}{m.own?.comparedWith ? ` · own sales vs ${m.own.comparedWith === "branch" ? "branch reps" : "company reps"}` : ""}</p>
+                  {m.note && <p className="mt-1 max-w-72 text-xs text-muted-foreground italic">{m.note}</p>}
                 </TableCell>
-                <TableCell className={`pr-5 text-right tabular ${b.penalty ? "font-bold text-[#a52727]" : "text-muted-foreground"}`}>{b.penalty ? `−${b.penalty}` : "—"}</TableCell>
+                <TableCell className="text-center">{m.status === "low_activity" ? <LowActivityBadge /> : <GradeBadge grade={m.grade} />}</TableCell>
+                <TableCell className="text-right font-semibold tabular" title={m.penalty && m.scoreBeforePenalty !== null ? `${fmt(m.scoreBeforePenalty, 1)} before the leave penalty` : undefined}>{fmt(m.score, 1)}</TableCell>
+                <TableCell className="text-right tabular">{fmt(m.branchScore, 1)}</TableCell>
+                <TableCell className="text-right tabular">{fmt(m.ownScore, 1)}</TableCell>
+                {KPI_KEYS.map((k) => (
+                  <TableCell key={k} className="text-right tabular text-muted-foreground">{fmt(m.own?.components[k] ?? null)}</TableCell>
+                ))}
+                <TableCell className="text-right tabular">{m.own ? m.own.visits : "—"}</TableCell>
+                <TableCell className="text-right tabular">{m.own ? m.own.sales : "—"}</TableCell>
+                <TableCell className="text-right tabular" title={`Informed ${m.leave.informed} · sudden with proof ${m.leave.suddenProof} · sudden without proof ${m.leave.suddenNoProof}`}>
+                  {m.leave.informed + m.leave.suddenProof + m.leave.suddenNoProof}
+                  {m.leave.suddenNoProof > 0 && <span className="ml-1 text-xs font-bold text-[#a52727]">({m.leave.suddenNoProof} no proof)</span>}
+                </TableCell>
+                <TableCell className={`pr-5 text-right tabular ${m.penalty ? "font-bold text-[#a52727]" : "text-muted-foreground"}`}>{m.penalty ? `−${m.penalty}` : "—"}</TableCell>
               </TableRow>
             ))}
           </TableBody>
@@ -127,13 +186,14 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
   const settings = await getSettings(supabase);
   // Branch grades compare every branch, so only org-wide roles see them.
   const orgWide = profile.role === "super_admin" || profile.role === "management";
-  const [lookups, { reps, notGraded, branches }] = await Promise.all([
+  const [lookups, { reps, notGraded, branches, managers }] = await Promise.all([
     getLookups(supabase, { profile }),
     getScorecard(supabase, filters, settings.min_employee_sample, { withBranches: orgWide }),
   ]);
   const gradedBranches = (branches ?? []).filter((b) => b.grade !== null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.name.localeCompare(b.name));
   const otherBranches = (branches ?? []).filter((b) => b.grade === null).sort((a, b) => a.name.localeCompare(b.name));
   const branchPdf = new URLSearchParams({ type: "branch_scorecard", format: "pdf", range: "custom", from: filters.from, to: filters.to });
+  const managerPdf = new URLSearchParams({ type: "manager_scorecard", format: "pdf", range: "custom", from: filters.from, to: filters.to });
 
   const graded = reps.filter((r) => r.grade !== null).sort((a, b) => (b.score ?? 0) - (a.score ?? 0) || a.name.localeCompare(b.name));
   const byVisits = (a: RepScore, b: RepScore) => a.visits - b.visits || a.name.localeCompare(b.name);
@@ -149,13 +209,18 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
     <>
       <PageHeader
         title="Sales rep scorecard"
-        description="Grades each sales rep A+ to Fail from customer feedback, device sales, accessories, conversion and Google reviews. Branch managers are graded on their whole branch; Management is not graded."
+        description="Grades each sales rep A+ to Fail from customer feedback, device sales, accessories, conversion and Google reviews. Branch managers are graded 70% on their branch and 30% on their own sales; Management is not graded."
         actions={
           <div className="flex flex-wrap gap-2">
             {orgWide && (
-              <a href={`/api/reports?${branchPdf.toString()}`} className={buttonVariants({ variant: "outline" })}>
-                <Download data-icon="inline-start" /> Branch PDF
-              </a>
+              <>
+                <a href={`/api/reports?${managerPdf.toString()}`} className={buttonVariants({ variant: "outline" })}>
+                  <Download data-icon="inline-start" /> Manager PDF
+                </a>
+                <a href={`/api/reports?${branchPdf.toString()}`} className={buttonVariants({ variant: "outline" })}>
+                  <Download data-icon="inline-start" /> Branch PDF
+                </a>
+              </>
             )}
             <a href={`/api/reports?${pdfParams.toString()}`} className={buttonVariants({ variant: "outline" })}>
               <Download data-icon="inline-start" /> Rep PDF
@@ -180,7 +245,7 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
             customers per working day than the showroom average (“Visits vs showroom”, red below {Math.round(LOW_RECORDING_RATE * 100)}%), so leaving out walk-ins who didn&apos;t buy doesn&apos;t help.
           </p>
           <p className="text-muted-foreground">
-            <strong className="text-foreground">Who is graded:</strong> only employees set as <em>Sales rep</em> (Settings → Employees). <em>Branch managers</em> are graded on their whole branch – the same KPIs, weights and grades, compared with the average branch, with sales per staff working day. <em>Management</em> is not graded. Their visits still count in the branch totals.
+            <strong className="text-foreground">Who is graded:</strong> only employees set as <em>Sales rep</em> (Settings → Employees). <em>Branch managers</em>: {MANAGER_WEIGHTS.branch}% branch result (the whole branch compared with the average branch, sales per staff working day) + {MANAGER_WEIGHTS.own}% their own sales (scored like a rep, compared with the branch&apos;s reps), minus their own sudden leave without proof. <em>Management</em> is not graded. Everyone&apos;s visits count in the branch totals.
           </p>
           <p className="text-muted-foreground">
             <strong className="text-foreground">Leave</strong> (Staff Leave page): device sales and accessories are compared per working day, so days off don&apos;t count against a rep.
@@ -191,6 +256,7 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
 
       <FilterBar options={{ branches: lookups.branches, employees: lookups.employees }} values={filters} show={["range", "branch"]} />
 
+      {managers && managers.length > 0 && <ManagerPanel managers={managers} />}
       {branches && <BranchPanel graded={gradedBranches} other={otherBranches} />}
 
       {reps.length === 0 ? (
@@ -309,7 +375,7 @@ export default async function ScorecardPage({ searchParams }: PageProps<"/admin/
                           <p className="font-medium">{p.name}</p>
                           <p className="text-xs text-muted-foreground">{p.branchName}</p>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{p.role === "branch_manager" ? "Branch manager – graded on the branch" : "Management – not graded"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{p.role === "branch_manager" ? `Branch manager – ${MANAGER_WEIGHTS.branch}% branch + ${MANAGER_WEIGHTS.own}% own sales` : "Management – not graded"}</TableCell>
                         <TableCell className="pr-5 text-right text-sm tabular text-muted-foreground">{p.visits} visits · {p.sales} sales</TableCell>
                       </TableRow>
                     ))}

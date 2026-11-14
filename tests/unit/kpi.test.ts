@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { branchTotals, feedbackScore, gradeFor, repStatusText, KPI_WEIGHTS, relativeScore, scoreBranches, scoreReps, weightedScore, type RepKpiTotals, type ScorecardRole } from "@/lib/kpi";
+import { branchTotals, combineManagerScore, feedbackScore, gradeFor, repStatusText, KPI_WEIGHTS, MANAGER_WEIGHTS, relativeScore, scoreBranches, scoreManagers, scoreReps, weightedScore, type ManagerInput, type RepKpiTotals, type ScorecardRole } from "@/lib/kpi";
 import { interactionImportSchema, interactionSchema, newCustomerSchema } from "@/lib/validation/customer";
 
 const rep = (over: Partial<RepKpiTotals>): RepKpiTotals => ({
@@ -308,15 +308,15 @@ describe("branch managers' leave and a single live branch", () => {
   });
   const fb = new Map([["b1", { responses: 30, avgStaffRating: 4.5, nps: 60 }], ["b2", { responses: 30, avgStaffRating: 4.5, nps: 60 }]]);
 
-  test("the branch manager's sudden leave without proof comes off the branch grade", () => {
+  test("the branch result has no leave penalty (it is on each manager's own grade); manager leave is still shown", () => {
     const rows = branchTotals([
       emp("Rep1", "b1", "rep"), emp("Mgr1", "b1", "branch_manager", { unexcusedLeaveDays: 2, informedLeaveDays: 1, leaveDays: 3 }),
       emp("Rep2", "b2", "rep"), emp("Mgr2", "b2", "branch_manager"),
     ], fb, new Map());
     const by = Object.fromEntries(scoreBranches(rows, { minFeedbackSample: 10 }).map((b) => [b.branchId, b]));
     expect(by.b1.managerLeave).toEqual({ informed: 1, suddenProof: 0, suddenNoProof: 2 });
-    expect(by.b1.penalty).toBe(10);
-    expect(by.b1.score).toBe(Math.round((by.b1.scoreBeforePenalty! - 10) * 10) / 10);
+    expect(by.b1.penalty).toBe(0);
+    expect(by.b1.score).toBe(by.b1.scoreBeforePenalty);
     expect(by.b2.penalty).toBe(0);
     // A rep's leave is not a branch penalty (it only lowers the staff days).
     expect(by.b1.staffDays).toBe(30 + 27);
@@ -330,7 +330,115 @@ describe("branch managers' leave and a single live branch", () => {
     expect(b1.note).toMatch(/second branch/);
     expect(b1.components.phones).toBeNull();
     expect(b1.components.feedback).not.toBeNull();
-    expect(b1.penalty).toBe(5);
+    expect(b1.penalty).toBe(0);
+    expect(b1.managerLeave.suddenNoProof).toBe(1);
     expect(b1.visits).toBe(40);
+  });
+});
+
+describe("branch manager grade: 70% branch result + 30% own sales", () => {
+  const emp = (name: string, branchId: string, role: ScorecardRole, over: Partial<RepKpiTotals> = {}) => ({
+    ...rep({ name, branchId, branchName: branchId === "b1" ? "Prime" : "Marino", periodDays: 30, ...over }),
+    scorecardRole: role,
+  });
+  const fb = new Map([["b1", { responses: 30, avgStaffRating: 4.5, nps: 60 }], ["b2", { responses: 30, avgStaffRating: 4.5, nps: 60 }]]);
+  const input = (e: ReturnType<typeof emp>): ManagerInput => ({ totals: e, name: e.name, branchId: e.branchId, branchName: e.branchName, isActive: true });
+  const run = (people: ReturnType<typeof emp>[], extra: ManagerInput[] = []) => {
+    const branches = scoreBranches(branchTotals(people, fb, new Map()), { minFeedbackSample: 10 });
+    const managers = scoreManagers(
+      [...people.filter((p) => p.scorecardRole === "branch_manager").map(input), ...extra],
+      people.filter((p) => p.scorecardRole === "rep"),
+      branches,
+      { minFeedbackSample: 10 },
+    );
+    return { branches: Object.fromEntries(branches.map((b) => [b.branchId, b])), managers: Object.fromEntries(managers.map((m) => [m.name, m])) };
+  };
+  const twoBranches = (mgr1: Partial<RepKpiTotals> = {}, mgr2: Partial<RepKpiTotals> = {}) => [
+    emp("R1", "b1", "rep"), emp("R2", "b1", "rep"), emp("M1", "b1", "branch_manager", mgr1),
+    emp("R3", "b2", "rep"), emp("R4", "b2", "rep"), emp("M2", "b2", "branch_manager", mgr2),
+  ];
+
+  test("weights are 70 / 30 and the maths is exact", () => {
+    expect(MANAGER_WEIGHTS.branch + MANAGER_WEIGHTS.own).toBe(100);
+    expect(combineManagerScore(80, 60)).toBe(74);
+    expect(combineManagerScore(79.1, 60)).toBe(73.4); // 55.37 + 18 = 73.37
+    expect(combineManagerScore(100, 0)).toBe(70);
+    expect(combineManagerScore(0, 100)).toBe(30);
+  });
+
+  test("a manager selling exactly like the branch reps: own KPIs 75, feedback 84.5, own 78.3, grade B+", () => {
+    const { branches, managers } = run(twoBranches());
+    const m = managers.M1;
+    expect(m.own!.components).toEqual({ feedback: 84.5, phones: 75, accessories: 75, conversion: 75, reviews: 75 });
+    expect(m.ownScore).toBe(78.3); // (84.5×35 + 75×65) / 100 = 78.325
+    expect(branches.b1.score).toBe(78.3);
+    expect(m.branchScore).toBe(78.3);
+    expect(m.scoreBeforePenalty).toBe(78.3);
+    expect(m).toMatchObject({ status: "graded", score: 78.3, grade: "B+", penalty: 0, note: null });
+    expect(m.own!.comparedWith).toBe("branch");
+  });
+
+  test("own sales above the branch reps lift only the 30% part", () => {
+    // Twice the reps' devices per day: devices score 100 (capped) instead of 75.
+    const { managers } = run(twoBranches({ androidPhones: 10, applePhones: 10 }));
+    const m = managers.M1;
+    expect(m.own!.components.phones).toBe(100);
+    const own = Math.round(((84.5 * 35 + 100 * 25 + 75 * 40) / 100) * 10) / 10; // 84.6
+    expect(m.ownScore).toBe(own);
+    expect(m.score).toBe(combineManagerScore(m.branchScore!, own));
+  });
+
+  test("the manager's own sudden leave without proof: 5 points a day off their own grade only", () => {
+    const { managers, branches } = run(twoBranches({ unexcusedLeaveDays: 2, leaveDays: 2 }));
+    expect(managers.M1.penalty).toBe(10);
+    expect(managers.M1.score).toBe(Math.round((managers.M1.scoreBeforePenalty! - 10) * 10) / 10);
+    expect(managers.M1.leave).toEqual({ informed: 0, suddenProof: 0, suddenNoProof: 2 });
+    expect(managers.M2.penalty).toBe(0);
+    expect(branches.b1.penalty).toBe(0);
+  });
+
+  test("two managers at one branch share the branch result but get their own grade", () => {
+    const people = [...twoBranches(), emp("M1b", "b1", "branch_manager", { androidPhones: 1, applePhones: 1, unexcusedLeaveDays: 1, leaveDays: 1 })];
+    const { managers } = run(people);
+    expect(managers.M1.branchScore).toBe(managers.M1b.branchScore);
+    expect(managers.M1b.ownScore!).toBeLessThan(managers.M1.ownScore!);
+    expect(managers.M1b.penalty).toBe(5);
+    expect(managers.M1.penalty).toBe(0);
+  });
+
+  test("own sales are compared with the company's reps when the branch has fewer than two graded reps", () => {
+    const people = [emp("R1", "b1", "rep"), emp("M1", "b1", "branch_manager"), emp("R3", "b2", "rep"), emp("R4", "b2", "rep")];
+    const { managers } = run(people);
+    expect(managers.M1.own!.comparedWith).toBe("company");
+  });
+
+  test("fewer than 10 own visits: low activity, no grade, branch result still shown", () => {
+    const { managers } = run(twoBranches({ visits: 6, sales: 3 }));
+    expect(managers.M1).toMatchObject({ status: "low_activity", grade: null, score: null, ownScore: null });
+    expect(managers.M1.branchScore).not.toBeNull();
+    expect(managers.M1.note).toMatch(/6 tracked visits, needs 10/);
+  });
+
+  test("only one live branch: own sales are scored, but no grade until the branch result exists", () => {
+    const people = [emp("R1", "b1", "rep"), emp("R2", "b1", "rep"), emp("M1", "b1", "branch_manager")];
+    const { managers } = run(people);
+    expect(managers.M1).toMatchObject({ status: "waiting_for_branch", grade: null, score: null, branchScore: null });
+    expect(managers.M1.ownScore).toBe(78.3);
+    expect(managers.M1.note).toMatch(/second branch/);
+  });
+
+  test("a branch-manager login without an employee record can't be graded and says why", () => {
+    const { managers } = run(twoBranches(), [{ totals: null, name: "Unlinked", branchId: "b1", branchName: "Prime", isActive: true }]);
+    expect(managers.Unlinked).toMatchObject({ status: "no_employee", grade: null, own: null, employeeId: null });
+    expect(managers.Unlinked.note).toMatch(/link this login to an employee record/);
+  });
+
+  test("reps' grades don't change when a manager sells (managers are never their peers)", () => {
+    const people = twoBranches({ androidPhones: 20, applePhones: 20 });
+    const before = scoreReps(people.filter((p) => p.scorecardRole === "rep"), { minFeedbackSample: 10 });
+    run(people);
+    const after = scoreReps(people.filter((p) => p.scorecardRole === "rep"), { minFeedbackSample: 10 });
+    expect(after).toEqual(before);
+    expect(before.every((r) => r.components.phones === 75)).toBe(true);
   });
 });

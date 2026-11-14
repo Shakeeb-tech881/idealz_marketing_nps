@@ -38,7 +38,13 @@ export function RecordLeaveDialog({ employees, branches, today }: { employees: E
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (o) setV({ employee_id: "", from: today, to: today, kind: "sudden_no_proof", note: "" });
+        setOpen(o);
+      }}
+    >
       <DialogTrigger render={<Button />}>
         <CalendarPlus data-icon="inline-start" /> Record leave
       </DialogTrigger>

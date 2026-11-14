@@ -75,7 +75,18 @@ export function renderPdf(r: ReportData, company: string): Buffer {
     const y = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 100;
     doc.setFontSize(8);
     doc.setTextColor(100);
-    r.notes.forEach((n, i) => doc.text(n, 36, y + 18 + i * 11, { maxWidth: 760 }));
+    // Wrap each note and move down by its real height, so long notes never overlap.
+    const pageBottom = doc.internal.pageSize.getHeight() - 30;
+    let cursor = y + 18;
+    for (const n of r.notes) {
+      const lines = doc.splitTextToSize(n, 760) as string[];
+      if (cursor + lines.length * 10 > pageBottom) {
+        doc.addPage();
+        cursor = 40;
+      }
+      doc.text(lines, 36, cursor);
+      cursor += lines.length * 10 + 3;
+    }
   }
   return Buffer.from(doc.output("arraybuffer"));
 }

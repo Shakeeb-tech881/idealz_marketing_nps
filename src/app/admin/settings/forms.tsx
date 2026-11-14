@@ -91,12 +91,18 @@ export function GeneralSettingsForm({ initial }: { initial: AppSettings }) {
 
 export function BranchDialog({ branch }: { branch?: Branch }) {
   const [open, setOpen] = useState(false);
-  const [v, setV] = useState({ name: branch?.name ?? "", code: branch?.code ?? "", city: branch?.city ?? "", address: branch?.address ?? "", phone: branch?.phone ?? "", brand_name: branch?.brand_name ?? "", sms_sender_id: branch?.sms_sender_id ?? "", is_active: branch?.is_active ?? true });
+  const initial = () => ({ name: branch?.name ?? "", code: branch?.code ?? "", city: branch?.city ?? "", address: branch?.address ?? "", phone: branch?.phone ?? "", brand_name: branch?.brand_name ?? "", sms_sender_id: branch?.sms_sender_id ?? "", is_active: branch?.is_active ?? true });
+  const [v, setV] = useState(initial);
   const [errors, setErrors] = useState<Errors>({});
   const [pending, start] = useTransition();
   const router = useRouter();
+  // Start from a blank form (or the saved values when editing) every time the dialog opens.
+  const onOpenChange = (o: boolean) => {
+    if (o) { setV(initial()); setErrors({}); }
+    setOpen(o);
+  };
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger render={branch ? <Button variant="ghost" size="sm" /> : <Button size="sm" />}>
         {branch ? <><Pencil data-icon="inline-start" /> Edit</> : <><Plus data-icon="inline-start" /> Add branch</>}
       </DialogTrigger>
@@ -154,12 +160,18 @@ export function BranchDialog({ branch }: { branch?: Branch }) {
 
 export function EmployeeDialog({ employee, branches }: { employee?: Employee; branches: Branch[] }) {
   const [open, setOpen] = useState(false);
-  const [v, setV] = useState({ full_name: employee?.full_name ?? "", branch_id: employee?.branch_id ?? "", employee_code: employee?.employee_code ?? "", job_title: employee?.job_title ?? "", is_active: employee?.is_active ?? true, scorecard_role: employee?.scorecard_role ?? ("rep" as ScorecardRole) });
+  const initial = () => ({ full_name: employee?.full_name ?? "", branch_id: employee?.branch_id ?? "", employee_code: employee?.employee_code ?? "", job_title: employee?.job_title ?? "", is_active: employee?.is_active ?? true, scorecard_role: employee?.scorecard_role ?? ("rep" as ScorecardRole) });
+  const [v, setV] = useState(initial);
   const [errors, setErrors] = useState<Errors>({});
   const [pending, start] = useTransition();
   const router = useRouter();
+  // Start from a blank form (or the saved values when editing) every time the dialog opens.
+  const onOpenChange = (o: boolean) => {
+    if (o) { setV(initial()); setErrors({}); }
+    setOpen(o);
+  };
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogTrigger render={employee ? <Button variant="ghost" size="sm" /> : <Button size="sm" />}>
         {employee ? <><Pencil data-icon="inline-start" /> Edit</> : <><Plus data-icon="inline-start" /> Add employee</>}
       </DialogTrigger>

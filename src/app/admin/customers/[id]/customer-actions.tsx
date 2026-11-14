@@ -21,7 +21,14 @@ export function EditContactDialog({ customerId, initial }: { customerId: string;
   const [pending, start] = useTransition();
   const router = useRouter();
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        // Show the saved contact details, not edits that were cancelled earlier.
+        if (o) { setValues(initial); setErrors({}); }
+        setOpen(o);
+      }}
+    >
       <DialogTrigger render={<Button variant="outline" size="sm" />}>
         <Pencil data-icon="inline-start" /> Edit
       </DialogTrigger>
