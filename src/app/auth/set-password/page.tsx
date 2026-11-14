@@ -10,7 +10,7 @@ export default async function SetPasswordPage({ searchParams }: PageProps<"/auth
     <div className="flex min-h-dvh items-center justify-center px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <Logo className="text-2xl" />
+          <Logo size="lg" className="mx-auto text-2xl" />
         </div>
         <div className="glass rounded-3xl p-6">
           <SetPasswordForm firstSignIn={sp.first === "1"} />

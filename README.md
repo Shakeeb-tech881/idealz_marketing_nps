@@ -94,5 +94,3 @@ SMS are sent through **Dialog eSMS** (`src/lib/messaging/dialog-esms.ts`, built 
 | `npm run test:db` | Database tests only (migrations, RLS, survey submission in PGlite) |
 
 More: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) · [docs/TESTING.md](docs/TESTING.md) · [docs/DATABASE.md](docs/DATABASE.md)
-
-final
