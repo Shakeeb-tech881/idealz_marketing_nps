@@ -29,7 +29,7 @@ export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
     <div className="flex min-h-dvh">
       <Sidebar sections={sections} brandName={settings.company_display_name} logoUrl={null} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-border bg-white/90 px-4 backdrop-blur sm:px-6">
+        <header className="glass-bar sticky top-0 z-30 flex h-14 items-center gap-3 px-4 sm:px-6">
           <MobileNav sections={sections} brandName={settings.company_display_name} logoUrl={null} />
           {sms?.isTest && (
             <span className="rounded-full bg-amber-100 px-2.5 py-1 text-[11px] font-semibold text-amber-800" title="SMS_PROVIDER=mock – messages are logged but not sent">

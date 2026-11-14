@@ -77,23 +77,24 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
 
-  --background: #f7f8fa;
+  /* Frost glass: translucent white surfaces over a soft colour wash (see "Liquid glass" below). */
+  --background: #f3f6fb;
   --foreground: #0b1b33;
-  --card: #ffffff;
+  --card: rgba(255, 255, 255, 0.62);
   --card-foreground: #0b1b33;
-  --popover: #ffffff;
+  --popover: rgba(255, 255, 255, 0.86);
   --popover-foreground: #0b1b33;
   --primary: #0f2747;
   --primary-foreground: #ffffff;
   --secondary: #eef1f5;
   --secondary-foreground: #0f2747;
   --muted: #f1f3f6;
-  --muted-foreground: #5b6779;
+  --muted-foreground: #4f5d73;
   --accent: #eef2f8;
   --accent-foreground: #0f2747;
   --destructive: #c62f2f;
-  --border: #e3e7ed;
-  --input: #d9dee6;
+  --border: rgba(15, 39, 71, 0.10);
+  --input: rgba(15, 39, 71, 0.16);
   --ring: #6b8bb8;
   --chart-1: #2a78d6;
   --chart-2: #eb6834;
@@ -101,7 +102,7 @@
   --chart-4: #eda100;
   --chart-5: #6250d6;
   --radius: 0.625rem;
-  --sidebar: #0f2747;
+  --sidebar: rgba(15, 39, 71, 0.88);
   --sidebar-foreground: #dfe6f0;
   --sidebar-primary: #ffffff;
   --sidebar-primary-foreground: #0f2747;
@@ -109,6 +110,20 @@
   --sidebar-accent-foreground: #ffffff;
   --sidebar-border: #1d3557;
   --sidebar-ring: #6b8bb8;
+
+  /* Liquid glass */
+  --glass-blur: blur(22px) saturate(180%);
+  --glass-edge: rgba(255, 255, 255, 0.75);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --glass-shadow: 0 10px 30px rgba(15, 39, 71, 0.08);
+}
+
+/* Phones/browsers without backdrop blur, and people who ask for less transparency: solid surfaces. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root { --card: #ffffff; --popover: #ffffff; --sidebar: #0f2747; }
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --card: #ffffff; --popover: #ffffff; --sidebar: #0f2747; --glass-blur: none; }
 }
 
 
@@ -126,4 +141,57 @@
 }
 @layer utilities {
   .tabular { font-variant-numeric: tabular-nums; }
+
+  /* Frosted card: panels, KPI cards, filter bars, sign-in and survey cards. */
+  .glass {
+    background-color: var(--card);
+    border: 1px solid var(--glass-edge);
+    box-shadow: var(--glass-shadow), var(--glass-highlight);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+  /* Frosted bar (top header). */
+  .glass-bar {
+    background-color: rgba(255, 255, 255, 0.55);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: 0 1px 0 rgba(15, 39, 71, 0.06);
+    -webkit-backdrop-filter: var(--glass-blur);
+    backdrop-filter: var(--glass-blur);
+  }
+  /* Navy glass (sidebar and mobile menu). */
+  .glass-nav {
+    background-color: var(--sidebar);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    box-shadow: 0 20px 50px rgba(15, 39, 71, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+    backdrop-filter: blur(24px) saturate(160%);
+  }
+}
+
+/* Every other card-coloured or popup surface (menus, dialogs, sheets) is frosted too. */
+.bg-card,
+.bg-popover {
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+}
+
+/* The colour wash behind the glass. Fixed, so it stays put while the page scrolls. */
+body {
+  background-color: var(--background);
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38rem 32rem at 22% -6%, rgba(120, 172, 255, 0.45), transparent 70%),
+    radial-gradient(34rem 30rem at 102% 28%, rgba(255, 196, 160, 0.42), transparent 70%),
+    radial-gradient(36rem 30rem at 48% 108%, rgba(150, 226, 196, 0.40), transparent 70%),
+    linear-gradient(160deg, #eaf1fb 0%, #f5f7fb 45%, #eef5f3 100%);
+}
+@media print {
+  body::before { display: none; }
+  body { background: #ffffff; }
 }

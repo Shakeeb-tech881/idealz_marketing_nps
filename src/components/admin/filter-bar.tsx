@@ -50,7 +50,7 @@ export function FilterBar({
   const dirty = ["branch", "employee", "type", "category"].some((k) => sp.get(k)) || (sp.get("range") ?? defaultRange) !== defaultRange;
 
   return (
-    <div className="mb-6 flex flex-wrap items-end gap-2 rounded-xl border border-border bg-card p-3 shadow-[0_1px_2px_rgba(15,39,71,0.04)]">
+    <div className="glass mb-6 flex flex-wrap items-end gap-2 rounded-2xl p-3">
       {show.includes("range") && (
         <label className="flex min-w-36 flex-col gap-1">
           <span className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Period</span>

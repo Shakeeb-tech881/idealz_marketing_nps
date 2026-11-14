@@ -25,7 +25,7 @@ export function KpiCard({
     brand: "bg-brand",
   } as const;
   return (
-    <div className={cn("rounded-xl border border-border bg-card px-4 py-4 shadow-[0_1px_2px_rgba(15,39,71,0.04)]", className)}>
+    <div className={cn("glass rounded-2xl px-4 py-4", className)}>
       <div className="flex items-center justify-between gap-2">
         <p className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           {accent && <span className={cn("size-2 rounded-full", dot[accent])} aria-hidden />}

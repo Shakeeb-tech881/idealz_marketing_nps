@@ -63,8 +63,8 @@ function NavList({ sections, onNavigate }: { sections: { title: string; items: N
                     onClick={onNavigate}
                     aria-current={active ? "page" : undefined}
                     className={cn(
-                      "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-                      active ? "bg-white/10 font-medium text-white" : "text-white/70 hover:bg-white/5 hover:text-white",
+                      "flex items-center gap-3 rounded-xl px-3 py-2 text-sm transition-colors",
+                      active ? "bg-white/16 font-medium text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.25)]" : "text-white/75 hover:bg-white/8 hover:text-white",
                     )}
                   >
                     <Icon className="size-4 shrink-0" aria-hidden />
@@ -82,13 +82,15 @@ function NavList({ sections, onNavigate }: { sections: { title: string; items: N
 
 export function Sidebar({ sections, brandName, logoUrl }: { sections: { title: string; items: NavItem[] }[]; brandName: string; logoUrl: string | null }) {
   return (
-    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col bg-sidebar py-5 lg:flex">
-      <div className="mb-8 px-6">
-        <Logo inverted name={brandName} logoUrl={logoUrl} />
-        <p className="mt-1 text-[11px] text-white/50">Customer Experience</p>
-      </div>
-      <div className="flex-1 overflow-y-auto">
-        <NavList sections={sections} />
+    <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 p-3 lg:flex">
+      <div className="glass-nav flex min-h-0 flex-1 flex-col rounded-3xl py-5">
+        <div className="mb-8 px-6">
+          <Logo inverted name={brandName} logoUrl={logoUrl} />
+          <p className="mt-1 text-[11px] text-white/55">Customer Experience</p>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <NavList sections={sections} />
+        </div>
       </div>
     </aside>
   );
@@ -99,12 +101,12 @@ export function MobileNav({ sections, brandName, logoUrl }: { sections: { title:
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger
-        className="inline-flex size-9 items-center justify-center rounded-lg border border-border bg-white lg:hidden"
+        className="inline-flex size-9 items-center justify-center rounded-xl border border-white/70 bg-white/70 shadow-sm backdrop-blur lg:hidden"
         aria-label="Open navigation"
       >
         <Menu className="size-4" />
       </SheetTrigger>
-      <SheetContent side="left" className="w-72 border-none bg-sidebar p-0 py-5 text-white">
+      <SheetContent side="left" className="glass-nav w-72 border-none p-0 py-5 text-white">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <div className="mb-8 px-6">
           <Logo inverted name={brandName} logoUrl={logoUrl} />
