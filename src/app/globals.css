@@ -77,19 +77,19 @@
   --series-1: #2a78d6;
   --series-2: #eb6834;
 
-  /* Frost glass: translucent white surfaces over a soft colour wash (see "Liquid glass" below). */
-  --background: #f3f6fb;
+  /* Ocean navy glass: blue-tinted translucent surfaces over a soft navy/teal wash (see "Liquid glass" below). */
+  --background: #e9f1f8;
   --foreground: #0b1b33;
-  --card: rgba(255, 255, 255, 0.62);
+  --card: rgba(240, 246, 253, 0.66);
   --card-foreground: #0b1b33;
-  --popover: rgba(255, 255, 255, 0.86);
+  --popover: rgba(244, 248, 253, 0.9);
   --popover-foreground: #0b1b33;
   --primary: #0f2747;
   --primary-foreground: #ffffff;
   --secondary: #eef1f5;
   --secondary-foreground: #0f2747;
   --muted: #f1f3f6;
-  --muted-foreground: #4f5d73;
+  --muted-foreground: #44536b;
   --accent: #eef2f8;
   --accent-foreground: #0f2747;
   --destructive: #c62f2f;
@@ -102,7 +102,8 @@
   --chart-4: #eda100;
   --chart-5: #6250d6;
   --radius: 0.625rem;
-  --sidebar: rgba(15, 39, 71, 0.88);
+  --sidebar: rgba(15, 39, 71, 0.92);
+  --sidebar-glass: linear-gradient(180deg, rgba(15, 39, 71, 0.94), rgba(12, 70, 96, 0.9));
   --sidebar-foreground: #dfe6f0;
   --sidebar-primary: #ffffff;
   --sidebar-primary-foreground: #0f2747;
@@ -112,18 +113,19 @@
   --sidebar-ring: #6b8bb8;
 
   /* Liquid glass */
-  --glass-blur: blur(22px) saturate(180%);
-  --glass-edge: rgba(255, 255, 255, 0.75);
-  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --glass-shadow: 0 10px 30px rgba(15, 39, 71, 0.08);
+  --glass-blur: blur(22px) saturate(170%);
+  --glass-edge: rgba(255, 255, 255, 0.85);
+  --glass-highlight: inset 0 1px 0 rgba(255, 255, 255, 0.95), inset 0 -3px 0 rgba(15, 39, 71, 0.04);
+  --glass-shadow: 0 10px 30px rgba(15, 39, 71, 0.12);
+  --glass-sheen: linear-gradient(180deg, rgba(255, 255, 255, 0.35), rgba(255, 255, 255, 0) 40%);
 }
 
 /* Phones/browsers without backdrop blur, and people who ask for less transparency: solid surfaces. */
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  :root { --card: #ffffff; --popover: #ffffff; --sidebar: #0f2747; }
+  :root { --card: #f7faff; --popover: #ffffff; --sidebar: #0f2747; --sidebar-glass: #0f2747; }
 }
 @media (prefers-reduced-transparency: reduce) {
-  :root { --card: #ffffff; --popover: #ffffff; --sidebar: #0f2747; --glass-blur: none; }
+  :root { --card: #f7faff; --popover: #ffffff; --sidebar: #0f2747; --sidebar-glass: #0f2747; --glass-blur: none; --glass-sheen: none; }
 }
 
 
@@ -145,6 +147,7 @@
   /* Frosted card: panels, KPI cards, filter bars, sign-in and survey cards. */
   .glass {
     background-color: var(--card);
+    background-image: var(--glass-sheen);
     border: 1px solid var(--glass-edge);
     box-shadow: var(--glass-shadow), var(--glass-highlight);
     -webkit-backdrop-filter: var(--glass-blur);
@@ -152,15 +155,15 @@
   }
   /* Frosted bar (top header). */
   .glass-bar {
-    background-color: rgba(255, 255, 255, 0.55);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.7);
+    background-color: rgba(236, 243, 252, 0.6);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.75);
     box-shadow: 0 1px 0 rgba(15, 39, 71, 0.06);
     -webkit-backdrop-filter: var(--glass-blur);
     backdrop-filter: var(--glass-blur);
   }
-  /* Navy glass (sidebar and mobile menu). */
+  /* Navy-to-teal glass (sidebar and mobile menu). */
   .glass-nav {
-    background-color: var(--sidebar);
+    background: var(--sidebar-glass);
     border: 1px solid rgba(255, 255, 255, 0.14);
     box-shadow: 0 20px 50px rgba(15, 39, 71, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.18);
     -webkit-backdrop-filter: blur(24px) saturate(160%);
@@ -186,10 +189,10 @@ body::before {
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(38rem 32rem at 22% -6%, rgba(120, 172, 255, 0.45), transparent 70%),
-    radial-gradient(34rem 30rem at 102% 28%, rgba(255, 196, 160, 0.42), transparent 70%),
-    radial-gradient(36rem 30rem at 48% 108%, rgba(150, 226, 196, 0.40), transparent 70%),
-    linear-gradient(160deg, #eaf1fb 0%, #f5f7fb 45%, #eef5f3 100%);
+    radial-gradient(38rem 32rem at 22% -6%, rgba(61, 127, 209, 0.32), transparent 70%),
+    radial-gradient(34rem 30rem at 102% 28%, rgba(26, 166, 166, 0.26), transparent 70%),
+    radial-gradient(36rem 30rem at 48% 108%, rgba(122, 167, 232, 0.30), transparent 70%),
+    linear-gradient(160deg, #dbe7f6 0%, #e9f1f8 50%, #dcefee 100%);
 }
 @media print {
   body::before { display: none; }
