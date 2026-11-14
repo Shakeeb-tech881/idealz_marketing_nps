@@ -171,6 +171,22 @@
   }
 }
 
+/*
+ * The top bar floats as a rounded glass strip, lined up with the floating sidebar
+ * (same 12px gap from the top and from the sidebar), so there is no seam between them.
+ * Unlayered on purpose so it overrides the bar's Tailwind classes (top-0, square corners).
+ */
+header.glass-bar {
+  top: 12px;
+  margin: 12px 12px 0;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  border-radius: 18px;
+  box-shadow: var(--glass-shadow), var(--glass-highlight);
+}
+@media (min-width: 1024px) {
+  header.glass-bar { margin-left: 0; }
+}
+
 /* Every other card-coloured or popup surface (menus, dialogs, sheets) is frosted too. */
 .bg-card,
 .bg-popover {
