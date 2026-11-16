@@ -44,7 +44,9 @@ export function SendWizard({ surveyType, candidates, templates, branches, appUrl
   const [pending, start] = useTransition();
   const [navPending, startNav] = useTransition();
 
-  const template = templates.find((t) => t.id === templateId);
+  // The page reuses this component when switching between Purchased and Non-purchased, so a
+  // template chosen on the other tab may not be in this list: fall back to this type's default.
+  const template = templates.find((t) => t.id === templateId) ?? templates.find((t) => t.is_default) ?? templates[0];
   const sampleName = candidates.find((c) => selected.has(c.id))?.name ?? candidates[0]?.name ?? "Nimal";
   const sampleBranch = candidates.find((c) => selected.has(c.id))?.branch ?? candidates[0]?.branch ?? branches[0]?.name ?? "iDealz Prime";
   const sampleBrand = branches.find((b) => b.name === sampleBranch)?.brand_name ?? null;
@@ -69,7 +71,7 @@ export function SendWizard({ surveyType, candidates, templates, branches, appUrl
 
   function send() {
     start(async () => {
-      const res = await sendInvitationsAction({ interactionIds: [...selected], surveyType, templateId: templateId || null });
+      const res = await sendInvitationsAction({ interactionIds: [...selected], surveyType, templateId: template?.id ?? null });
       setConfirmOpen(false);
       if (!res.ok) return void toast.error(res.error);
       setSummary(res.data);
@@ -153,7 +155,7 @@ export function SendWizard({ surveyType, candidates, templates, branches, appUrl
             <p className="text-sm text-destructive">No active template for this survey type. Create one under Templates.</p>
           ) : (
             <>
-              <NativeSelect value={templateId} onChange={(e) => setTemplateId(e.target.value)} aria-label="Template">
+              <NativeSelect value={template?.id ?? ""} onChange={(e) => setTemplateId(e.target.value)} aria-label="Template">
                 {templates.map((t) => <option key={t.id} value={t.id}>{t.name}{t.is_default ? " (default)" : ""}</option>)}
               </NativeSelect>
               <div className="mt-3 rounded-2xl rounded-bl-sm bg-muted p-3.5 text-sm leading-relaxed whitespace-pre-wrap">{preview}</div>
