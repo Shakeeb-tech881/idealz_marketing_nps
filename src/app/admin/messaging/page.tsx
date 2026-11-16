@@ -101,6 +101,7 @@ export default async function MessagingPage({ searchParams }: PageProps<"/admin/
         </div>
       )}
       <SendWizard
+        key={type}
         surveyType={type}
         candidates={candidates}
         templates={(templatesRes.data ?? []).filter((t) => t.survey_type === type)}
