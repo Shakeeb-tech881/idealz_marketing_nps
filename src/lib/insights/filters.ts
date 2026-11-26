@@ -69,9 +69,24 @@ export function lastPurchaseBefore(ageMonths: number | null, now = new Date()): 
   return ageMonths ? formatInTimeZone(subMonths(now, ageMonths), "Asia/Colombo", "yyyy-MM-dd") : null;
 }
 
+/**
+ * Mobiles are stored as +94771234567, so a number typed the local way ("077 123 4567")
+ * or with the country code is searched by its digits after the 0 / 94.
+ * Anything with letters is a name search and is passed on unchanged.
+ */
+export function insightSearchText(q: string | null): string | null {
+  const t = q?.trim();
+  if (!t) return null;
+  if (!/^[\d\s+().-]+$/.test(t)) return t;
+  let digits = t.replace(/\D/g, "");
+  if (digits.startsWith("94") && digits.length >= 11) digits = digits.slice(2);
+  else if (digits.startsWith("0")) digits = digits.slice(1);
+  return digits || t;
+}
+
 export function insightRpcArgs(f: InsightFilters, limit: number, offset: number, now = new Date()) {
   return {
-    p_q: f.q,
+    p_q: insightSearchText(f.q),
     p_model: f.model,
     p_category: f.category,
     p_brand: f.brand,
