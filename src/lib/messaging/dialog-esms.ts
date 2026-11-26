@@ -332,7 +332,8 @@ export class DialogEsmsSmsProvider implements SmsProvider {
       if (json?.status === "success") {
         const data = (json.data && typeof json.data === "object" ? json.data : {}) as Record<string, unknown>;
         const campaignId = data.campaignId != null ? String(data.campaignId) : null;
-        const cost = data.campaignCost != null ? ` · cost LKR ${data.campaignCost}` : "";
+        const costNum = Number(data.campaignCost);
+        const cost = data.campaignCost != null && Number.isFinite(costNum) ? ` · cost LKR ${costNum.toFixed(2)}` : "";
         return { ok: true, providerMessageId: campaignId, providerStatus: `Accepted by Dialog eSMS · from ${sourceAddress}${campaignId ? ` · campaign ${campaignId}` : ""}${cost}`, raw };
       }
 
@@ -359,33 +360,51 @@ export class DialogEsmsSmsProvider implements SmsProvider {
    * 3 delivered, 4 delivery failed. Order is not guaranteed.
    */
   parseDeliveryReport(payload: unknown): DeliveryReport | null {
-    const get = (k: string): string | null => {
-      if (payload instanceof URLSearchParams) return payload.get(k);
-      if (payload && typeof payload === "object" && k in payload) {
-        const v = (payload as Record<string, unknown>)[k];
-        return v == null ? null : String(v);
-      }
-      return null;
-    };
-    const campaignId = get("campaignId")?.trim();
-    const status = get("status")?.trim();
-    const msisdn = get("msisdn")?.trim() ?? "";
-    if (!campaignId || !/^\d+$/.test(campaignId) || !status) return null;
+    const fields = deliveryReportFields(payload);
+    const campaignId = fields.get("campaignid")?.trim();
+    const rawStatus = fields.get("status")?.trim() ?? "";
+    const msisdn = (fields.get("msisdn") ?? fields.get("mobile") ?? "").trim();
+    if (!campaignId || !/^\d+$/.test(campaignId) || !rawStatus) return null;
     const map: Record<string, { status: DeliveryReport["status"]; label: string }> = {
       "1": { status: "submitted", label: "Submitted to network (SMSC)" },
       "2": { status: "failed", label: "Submission failed – number not valid or connectivity failure" },
       "3": { status: "delivered", label: "Delivered" },
       "4": { status: "failed", label: "Delivery failed" },
     };
-    const m = map[status];
+    const code = /^\d+(\.0+)?$/.test(rawStatus) ? String(parseInt(rawStatus, 10)) : (STATUS_WORDS[rawStatus.toLowerCase()] ?? "");
+    const m = map[code];
     if (!m) return null;
     return {
       providerMessageId: campaignId,
       status: m.status,
-      providerStatus: `${m.label} (eSMS status ${status})`,
+      providerStatus: `${m.label} (eSMS status ${rawStatus})`,
       occurredAt: new Date(),
-      recipient: msisdn ? msisdn.replace(/\D/g, "").slice(-9) : null,
-      raw: { campaignId, msisdn, status },
+      recipient: msisdn ? msisdn.replace(/\D/g, "").slice(-9) || null : null,
+      raw: { campaignId, msisdn, status: rawStatus },
     };
   }
+}
+
+/** Status words some gateways send instead of the documented 1–4 codes. */
+const STATUS_WORDS: Record<string, string> = {
+  submitted: "1", sent: "1", accepted: "1",
+  delivered: "3", delivrd: "3",
+  failed: "4", undelivered: "4", undeliv: "4", rejected: "4", rejectd: "4", expired: "4",
+};
+
+/**
+ * Report fields keyed case- and punctuation-insensitively, so "campaignId",
+ * "campaign_id", "CampaignID" and "?campaignId" (when the gateway adds its own "?"
+ * to a URL that already has one) are all read the same way.
+ */
+export function deliveryReportFields(payload: unknown): Map<string, string> {
+  const out = new Map<string, string>();
+  const put = (k: string, v: unknown) => {
+    if (v == null) return;
+    const key = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (key && !out.has(key)) out.set(key, String(v));
+  };
+  if (payload instanceof URLSearchParams) payload.forEach((v, k) => put(k, v));
+  else if (payload && typeof payload === "object") for (const [k, v] of Object.entries(payload as Record<string, unknown>)) put(k, v);
+  return out;
 }
