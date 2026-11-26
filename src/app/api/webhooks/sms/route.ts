@@ -20,13 +20,18 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  let payload: unknown;
-  try {
-    payload = await req.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  // JSON or form-encoded body; fields in the query string count too.
+  const text = await req.text().catch(() => "");
+  let body: Record<string, unknown> = {};
+  if (text.trim()) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === "object") body = parsed as Record<string, unknown>;
+    } catch {
+      body = Object.fromEntries(new URLSearchParams(text));
+    }
   }
-  return handle(req, payload);
+  return handle(req, { ...Object.fromEntries(req.nextUrl.searchParams), ...body });
 }
 
 function authorised(req: NextRequest, secret: string | undefined) {
@@ -35,19 +40,39 @@ function authorised(req: NextRequest, secret: string | undefined) {
   return timingSafeEqual(Buffer.from(given), Buffer.from(secret));
 }
 
+/** What arrived, for the logs: field names and values, never the secret, mobile numbers shortened. */
+function describe(payload: unknown) {
+  const out: Record<string, string> = {};
+  const entries: [string, unknown][] =
+    payload instanceof URLSearchParams ? [...payload.entries()] : payload && typeof payload === "object" ? Object.entries(payload as Record<string, unknown>) : [];
+  for (const [k, v] of entries) {
+    const key = k.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (key.startsWith("secret")) continue;
+    const value = String(v ?? "");
+    out[k] = /msisdn|mobile|phone|^to$/.test(key) && value.length > 4 ? `…${value.slice(-3)}` : value.slice(0, 60);
+  }
+  return out;
+}
+
 async function handle(req: NextRequest, payload: unknown) {
   const env = serverEnv();
   const provider = getSmsProvider();
   if (!provider.supportsDeliveryReports || !provider.parseDeliveryReport) {
+    console.warn("[sms-webhook] refused (404): delivery reports are not enabled for this provider");
     return NextResponse.json({ error: "Delivery reports are not enabled for this provider" }, { status: 404 });
   }
   if (!authorised(req, env.SMS_WEBHOOK_SECRET)) {
+    console.warn("[sms-webhook] refused (401): secret missing or wrong", { method: req.method, fields: describe(payload) });
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
   const report = provider.parseDeliveryReport(payload);
-  if (!report) return NextResponse.json({ error: "Unrecognised payload" }, { status: 422 });
+  if (!report) {
+    console.warn("[sms-webhook] refused (422): report not recognised", { method: req.method, fields: describe(payload) });
+    return NextResponse.json({ error: "Unrecognised payload" }, { status: 422 });
+  }
 
   const result = await applyReport(provider.name, report);
+  console.info("[sms-webhook] report", { campaignId: report.providerMessageId, status: report.status, ...result });
   // Always 200 for a well-formed, authorised report so the provider does not keep retrying.
   return NextResponse.json({ ok: true, ...result });
 }
